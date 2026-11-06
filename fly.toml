@@ -9,11 +9,13 @@ primary_region = "lhr"       # EDIT: pick the region nearest your database and c
 
 [env]
   MDM_LISTEN = ":8080"
-  # Fly's edge terminates TLS and forwards plain HTTP from its own private
-  # network. X-Forwarded-For is believed from that network and nobody else.
-  # (assumption, checked after the first deploy: a sign-in in the audit log
-  # shows your real address, not a 172.16 one)
-  MDM_TRUSTED_PROXIES = "172.16.0.0/12,fdaa::/16"
+  # Fly's edge terminates TLS and forwards plain HTTP from its private IPv4
+  # range. X-Forwarded-For is believed from that range and nobody else. The
+  # 6PN range (fdaa::/16) is deliberately NOT trusted: it also carries other
+  # apps in the same Fly organisation, and a header believed from them is an
+  # address they choose. (assumption, checked after the first deploy: a sign-in
+  # in the audit log shows your real address, not a 172.16 one)
+  MDM_TRUSTED_PROXIES = "172.16.0.0/12"
   MDM_SIGNUP_HOST = "app.example.com"            # EDIT: the operator host (home page and sign-up)
   MDM_SIGNUP_TENANT_DOMAIN = "example.com"       # EDIT: customers get <name>.<this>
   MDM_SIGNUP_PRODUCT_NAME = "Vlume"

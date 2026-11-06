@@ -51,7 +51,8 @@ export SUPABASE_DB_URL='postgresql://postgres.<ref>:<database-password>@aws-0-<r
 "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform/deploy/supabase/apply.sh"
 ```
 
-It creates the seven roles, applies the 44 migrations once each, and prints two
+It creates the seven roles, takes away the rights Supabase gives its own API roles on
+every new table (and checks they are gone), applies the 44 migrations once each, and prints two
 generated passwords, **once**: `mdm_app` and `mdm_operator`. Put them in your password
 manager now. Running it again is safe and changes nothing.
 
@@ -62,7 +63,7 @@ MDM_APP_DSN       postgres://mdm_app.<ref>:<app-password>@aws-0-<region>.pooler.
 MDM_OPERATOR_DSN  postgres://mdm_operator.<ref>:<operator-password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
-Two settings to switch on in the Supabase dashboard: **Database, Backups** (daily is on by
+Two settings to check in the Supabase dashboard: **Database, Backups** (daily is on by
 default; point-in-time recovery is a paid add-on and worth it before real customers) and
 **Settings, Data API: turn the REST API off**. The platform talks to Postgres directly, so
 nothing should be reachable through Supabase's own API.

@@ -19,7 +19,14 @@ IMAGE="postgres:17-alpine"
 NET=()
 [ -n "${APPLY_DOCKER_NETWORK:-}" ] && NET=(--network "$APPLY_DOCKER_NETWORK")
 
-psql_() { docker run --rm -i "${NET[@]}" -e PGCONNECT_TIMEOUT=15 "$IMAGE" psql -v ON_ERROR_STOP=1 -X -q "$SUPABASE_DB_URL" "$@"; }
+# The connection string (it holds the password) is handed to the container
+# through the environment, not written into the docker command line, where
+# any local process listing would show it.
+export SUPABASE_DB_URL
+psql_() {
+  docker run --rm -i "${NET[@]}" -e PGCONNECT_TIMEOUT=15 -e SUPABASE_DB_URL "$IMAGE" \
+    sh -c 'exec psql -v ON_ERROR_STOP=1 -X -q "$SUPABASE_DB_URL" "$@"' sh "$@"
+}
 
 echo "==> checking the connection"
 psql_ -tA -c "select 'connected as ' || current_user || ' to ' || current_database()"
@@ -29,6 +36,9 @@ fi
 
 echo "==> roles"
 psql_ < "$HERE/deploy/supabase/00_roles.sql" >/dev/null
+
+echo "==> closing Supabase's own API to the platform's tables"
+psql_ < "$HERE/deploy/supabase/99_lockdown.sql" >/dev/null
 
 echo "==> migrations"
 psql_ -c "CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())" >/dev/null
@@ -40,12 +50,25 @@ for f in "$HERE"/db/migrations/*.sql; do
   echo "    applied $n"
 done
 
+echo "==> checking again after the migrations"
+psql_ < "$HERE/deploy/supabase/99_lockdown.sql" >/dev/null
+echo "    no right is held by Supabase's API roles"
+
 echo "==> logins"
 # The two roles that serve traffic get passwords. Existing ones are left
 # alone unless a password is passed in, so a re-run never locks the gateway out.
 gen() { openssl rand -base64 48 | tr -d '/+=\n' | cut -c1-40; }
+scram() {
+  python3 -c 'import sys,os,hashlib,hmac,base64
+pw=sys.stdin.read().encode(); salt=os.urandom(16); it=4096
+sp=hashlib.pbkdf2_hmac("sha256",pw,salt,it)
+ck=hmac.new(sp,b"Client Key","sha256").digest()
+sv=hmac.new(sp,b"Server Key","sha256").digest()
+b=lambda x:base64.b64encode(x).decode()
+print("SCRAM-SHA-256$%d:%s$%s:%s"%(it,b(salt),b(hashlib.sha256(ck).digest()),b(sv)))'
+}
 set_login() { # role variable-name
-  local role="$1" var="$2" have pw
+  local role="$1" var="$2" have pw verifier
   have="$(psql_ -tA -c "select rolcanlogin from pg_roles where rolname = '$role'")"
   pw="${!var:-}"
   if [ "$have" = "t" ] && [ -z "$pw" ]; then echo "    $role can already log in; password unchanged"; return; fi
@@ -53,7 +76,10 @@ set_login() { # role variable-name
   # Letters and digits only, so the value can sit inside a SQL literal with
   # nothing to escape. It travels on standard input, never on a command line.
   if ! [[ "$pw" =~ ^[A-Za-z0-9]{20,}$ ]]; then echo "$var must be 20 or more letters and digits"; exit 1; fi
-  printf "ALTER ROLE %s LOGIN PASSWORD '%s';" "$role" "$pw" | psql_ >/dev/null
+  # Sent as a SCRAM-SHA-256 verifier computed here, so the plaintext password
+  # never reaches the server and cannot appear in its statement logs.
+  verifier="$(printf '%s' "$pw" | scram)"
+  printf "ALTER ROLE %s LOGIN PASSWORD '%s';" "$role" "$verifier" | psql_ >/dev/null
   echo "    $role: new password (shown once; put it in the host's secrets now):"
   echo "      $pw"
 }

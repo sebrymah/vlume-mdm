@@ -5,9 +5,19 @@
 <main>
   {{template "said" .}}
   <h1>Sign-in</h1>
+  {{if eq .Identity.Protocol "local"}}
+  <div class="card" style="border-color:var(--brand)">
+    <p style="margin:0 0 6px"><strong>Your people sign in with an email and a password.</strong></p>
+    <p class="sub" style="margin:0;font-size:13px;line-height:1.55">There is no identity provider. Add, remove and
+    change people on the <a href="/users">Users</a> page. If your company later gets one, connect it below: the
+    switch needs a group already mapped to Super Admin (also below), and your accounts here then stop signing in.</p>
+  </div>
+  <h2 style="margin-top:24px">Move to an identity provider</h2>
+  {{else}}
   <p class="sub">Your people sign in with your own identity provider. This
   console never holds a password. What you decide here is which of your
   groups become which role.</p>
+  {{end}}
 
   <h2>Who gets which role</h2>
   <p class="sub">A person in several mapped groups gets the highest. A person

@@ -73,6 +73,7 @@ func (g *Gateway) identityConfig(ctx context.Context, t directory.Tenant) (ident
 		RedirectURL: raw.RedirectURL, RoleClaim: raw.RoleClaim,
 		Protocol: raw.Protocol, SAMLSSOURL: raw.SAMLSSOURL, SAMLCertificate: raw.SAMLCertificate,
 		SAMLSLOURL: raw.SAMLSLOURL, SAMLSigningCert: raw.SAMLSigningCert,
+		LocalMFA: raw.LocalMFA,
 	}
 	// The sealed values: the OIDC client secret, or the SAML signing key.
 	// Opened under the tenant's own key, which lives in the tenant's
@@ -146,9 +147,9 @@ func (g *Gateway) signIn(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if g.sessions == nil || (g.oidc == nil && g.saml == nil) {
+	if g.sessions == nil {
 		g.signInProblem(w, r, host, http.StatusNotImplemented,
-			"Sign-in is not available", "This deployment has no identity provider wired up.")
+			"Sign-in is not available", "This deployment cannot sign people in.")
 		return
 	}
 
@@ -168,6 +169,10 @@ func (g *Gateway) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cfg.IsLocal() {
+		g.localSignInPage(w, r, host, "")
+		return
+	}
 	if cfg.IsSAML() {
 		g.samlSignIn(w, r, host, cfg)
 		return
@@ -278,6 +283,10 @@ func (g *Gateway) callback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "this organisation signs in with SAML")
 		return
 	}
+	if cfg.IsLocal() {
+		writeError(w, http.StatusBadRequest, "this organisation signs in with an email and a password")
+		return
+	}
 	claims, err := g.oidc.Exchange(r.Context(), cfg, code, flow.Verifier, flow.Nonce)
 	if err != nil {
 		g.log.Warn("sign-in rejected", "tenant", host.Slug, "err", err)
@@ -328,13 +337,31 @@ func (g *Gateway) finishSignIn(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	if !g.startSession(w, r, host, claims, role) {
+		return
+	}
+
+	to := flow.Return
+	if to == "" {
+		to = "/"
+	}
+	http.Redirect(w, r, to, http.StatusFound)
+}
+
+// startSession is the part of a sign-in every mode shares once the person
+// has proved who they are and been given a role and a seat: the session
+// cookie, and the record that the platform has met them (0040). It says
+// whether it succeeded; when it did not, it has already answered.
+func (g *Gateway) startSession(w http.ResponseWriter, r *http.Request, host directory.Tenant,
+	claims identity.Claims, role authz.Role) bool {
+
 	token, sess, err := g.sessions.Start(session.Session{
 		TenantID: host.ID, Subject: claims.Subject, Email: claims.Email,
 		Name: claims.Name, Role: string(role),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not start a session")
-		return
+		return false
 	}
 	g.setCookie(w, sessionCookie, token, int(session.Lifetime/time.Second))
 	g.log.Info("signed in", "tenant", host.Slug, "subject", sess.Subject, "role", sess.Role)
@@ -352,12 +379,7 @@ func (g *Gateway) finishSignIn(w http.ResponseWriter, r *http.Request,
 			g.log.Error("could not record the person", "tenant", host.Slug, "subject", claims.Subject, "err", err)
 		}
 	}
-
-	to := flow.Return
-	if to == "" {
-		to = "/"
-	}
-	http.Redirect(w, r, to, http.StatusFound)
+	return true
 }
 
 // roleFor maps the person's groups to a role, reading the mapping inside a
@@ -453,6 +475,10 @@ func (g *Gateway) signOut(w http.ResponseWriter, r *http.Request) {
 		cfg, err := g.identityConfig(r.Context(), host)
 		switch {
 		case err != nil:
+		case cfg.IsLocal():
+			// Nothing at a provider to end: ours is the only session.
+			http.Redirect(w, r, "/signin?notice=closed", http.StatusFound)
+			return
 		case cfg.IsSAML():
 			// A SAML tenant with a logout URL and a key of ours to sign
 			// with (0043) is sent to its provider with a signed logout

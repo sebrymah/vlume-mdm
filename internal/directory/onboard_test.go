@@ -35,6 +35,8 @@ func cleanNew(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 	for _, s := range []string{
+		`DELETE FROM local_tokens WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'kalesi-new%' OR slug = 'arbor-new')`,
+		`DELETE FROM local_accounts WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'kalesi-new%' OR slug = 'arbor-new')`,
 		`DELETE FROM tenant_role_map WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'kalesi-new%' OR slug = 'arbor-new')`,
 		`DELETE FROM tenant_identity WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'kalesi-new%' OR slug = 'arbor-new')`,
 		`DELETE FROM tenant_domains WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'kalesi-new%' OR slug = 'arbor-new')`,
@@ -256,5 +258,67 @@ func queryOne(t *testing.T, sql string, into any, args ...any) {
 	defer conn.Close(ctx)
 	if err := conn.QueryRow(ctx, sql, args...).Scan(into); err != nil {
 		t.Fatalf("query: %v", err)
+	}
+}
+
+// A tenant with no identity provider (0044): its first administrator is an
+// account, not a group, and the operator who made it can neither read it
+// back nor sign in as it.
+func TestALocalTenantIsMadeWithItsFirstAdministratorAndNoRoleMap(t *testing.T) {
+	seed(t)
+	cleanNew(t)
+	d := open(t)
+	ctx := context.Background()
+
+	in := NewTenant{
+		Name: "Kalesi Foods", Slug: "kalesi-new", Plan: "growth", Host: "console.kalesi.example",
+		Protocol: "local", OwnerEmail: " Kemi@Kalesi.example ", OwnerName: "Kemi Adeleke",
+		OwnerInviteHash: []byte("0123456789abcdef0123456789abcdef"), OwnerCreatedBy: "tenantctl",
+	}
+	id, err := d.CreateTenant(ctx, in)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	cfg, err := d.Identity(ctx, id)
+	if err != nil || cfg.Protocol != "local" || cfg.Issuer != "" || cfg.LocalMFA != "admins" {
+		t.Fatalf("identity: %+v %v", cfg, err)
+	}
+	var status, role, email, name, hash string
+	queryOne(t, `SELECT status FROM local_accounts WHERE tenant_id = $1`, &status, id)
+	queryOne(t, `SELECT role FROM local_accounts WHERE tenant_id = $1`, &role, id)
+	queryOne(t, `SELECT email FROM local_accounts WHERE tenant_id = $1`, &email, id)
+	queryOne(t, `SELECT name FROM local_accounts WHERE tenant_id = $1`, &name, id)
+	queryOne(t, `SELECT password_hash FROM local_accounts WHERE tenant_id = $1`, &hash, id)
+	if status != "invited" || role != "super_admin" || email != "kemi@kalesi.example" || name != "Kemi Adeleke" || hash != "" {
+		t.Fatalf("the first administrator: %s %s %s %s %q", status, role, email, name, hash)
+	}
+	var tokens, maps int
+	queryOne(t, `SELECT count(*) FROM local_tokens WHERE tenant_id = $1 AND purpose = 'invite' AND used_at IS NULL AND expires_at > now() + interval '6 days'`, &tokens, id)
+	queryOne(t, `SELECT count(*) FROM tenant_role_map WHERE tenant_id = $1`, &maps, id)
+	if tokens != 1 || maps != 0 {
+		t.Fatalf("%d invitations, %d role mappings", tokens, maps)
+	}
+	if got := in.InviteLink("TOKEN"); got != "https://console.kalesi.example/signin/local/accept/TOKEN" {
+		t.Fatalf("invite link: %s", got)
+	}
+
+	// Without an owner, or without a way for the owner to get in, nobody
+	// could sign in at all, so there is no tenant.
+	cleanNew(t)
+	for _, bad := range []NewTenant{
+		{Name: "K", Slug: "kalesi-new", Host: "console.kalesi.example", Protocol: "local",
+			OwnerInviteHash: []byte("0123456789abcdef0123456789abcdef")},
+		{Name: "K", Slug: "kalesi-new", Host: "console.kalesi.example", Protocol: "local", OwnerEmail: "kemi@kalesi.example"},
+		{Name: "K", Slug: "kalesi-new", Host: "console.kalesi.example", Protocol: "local", OwnerEmail: "not-an-address",
+			OwnerInviteHash: []byte("0123456789abcdef0123456789abcdef")},
+	} {
+		if _, err := d.CreateTenant(ctx, bad); err == nil {
+			t.Fatalf("a local tenant was made with %+v", bad)
+		}
+	}
+	var n int
+	queryOne(t, `SELECT count(*) FROM tenants WHERE slug = 'kalesi-new'`, &n)
+	if n != 0 {
+		t.Fatal("a refused creation left a tenant behind")
 	}
 }

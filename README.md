@@ -186,6 +186,14 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-trendcount    # take the trend from a different count than the dashboard, expect a FAILURE
 ./run_go.sh --break-personsql     # let an employee's transaction read the whole tenant, expect a FAILURE
 ./run_go.sh --break-slosig        # act on a provider's logout request without its signature, expect a FAILURE
+./run_go.sh --break-lockout       # let five wrong passwords go unnoticed, expect a FAILURE
+./run_go.sh --break-totpreplay    # accept a second-step code twice, expect a FAILURE
+./run_go.sh --break-lastadmin     # let the last Super Admin be removed, expect a FAILURE
+./run_go.sh --break-enumeration   # tell a stranger an address has no account, expect a FAILURE
+./run_go.sh --break-localtoken    # let a spent invitation or reset link be used again, expect a FAILURE
+./run_go.sh --break-mfarequired   # let an administrator in on a password alone, expect a FAILURE
+./run_go.sh --break-localprotocol # take a password at an identity-provider tenant, expect a FAILURE
+./run_go.sh --break-sessionsend   # leave a person's sessions when their access changes, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -2312,6 +2320,99 @@ anything remains nothing is committed and the operator is told which table
 The tenants row stays, status `offboarded`, with no hostname, as the
 record that a tenant existed; `offboarding_log` on the operator's side
 holds the counts and the verified zero.
+
+## Sign-in without an identity provider
+
+A customer with no Entra, Google Workspace or Okta cannot be a customer of a
+product that only signs people in through one. The third mode (0044,
+`internal/localauth`, `internal/gateway/local_signin.go`) is accounts held
+here: an email address, a password and, for the roles that can act on a
+fleet, an authenticator app. It is a mode of the TENANT, chosen when the
+tenant is made, not a second door on every tenant: a tenant with an identity
+provider takes its people from there and a local account it happens to hold
+does not sign in, because a password account would be a way round the
+provider's own controls, offboarding above all (`--break-localprotocol`).
+
+**Making one.** Self-service sign-up offers two forms on its last page: an
+identity provider, or "I do not have one", where the person who proved the
+address becomes the first administrator with the password they choose there.
+`tenantctl create --protocol local --owner-email kemi@x.example` makes the
+owner an invited account and prints a link that works once, for seven days;
+the operator's role may insert exactly that row, a Super Admin, invited or
+active, and may read nothing back (a test holds that line, and refuses an
+employee or a disabled account by row-level security, not by a missing
+privilege).
+
+**Adding people.** A Super Admin invites from the Users page, which only a
+Super Admin sees: an address, a name and one of the six roles. The person
+gets a link, emailed in the tenant's own brand when mail is set up and shown
+once on the page either way, to choose a password. The link is 256 random
+bits kept as their hash, good once, for a limited time, and asking for
+another replaces the first. A link opened at another tenant's hostname is
+nothing. Disabling signs the person out everywhere and frees their
+administrator seat; an account is never deleted, so the audit log and any
+device assigned to them still have a person to point at. The last active
+Super Admin cannot be disabled or demoted, with the active ones locked first
+so two demoting each other at once cannot both succeed (`--break-lastadmin`).
+Changing a role, disabling, resetting a password or resetting the second
+step ends that person's sessions, because the role travels in the session.
+
+**The password.** Argon2id at 46 MiB, two passes, parameters written into
+every hash so raising them later leaves the old ones verifiable, and read
+back bounded so a hash row edited to ask for 4 GiB is refused. At least
+twelve characters, not one of the long passwords everybody tries, not a run
+of keys, and not built from the person's own name, address or organisation.
+Hashing runs four at a time, because each holds the memory. A wrong password
+and an address with no account cost the same time (the unknown one verifies
+against a hash nobody knows), and every way a sign-in can fail before the
+second step gets the same words: an unknown address, a wrong password, a
+disabled account, an account never activated, a locked one
+(`--break-enumeration`). Five wrong answers lock the account for fifteen
+minutes, the count restarts after a lock runs out, and a locked account
+refuses even the right password so the lock cannot be used as an oracle
+(`--break-lockout`). A per-address limit stands in front of that for the
+guesser who rotates accounts. The forgot-password form says the same thing
+whether or not the address exists, sends at most one link a minute per
+address, and does its lookup and its mail after the answer, so the answer's
+time says nothing either. A reset link also ends every session the person
+had and leaves the second step alone: a link in an inbox is not a way round
+it (`--break-sessionsend`).
+
+**The second step.** TOTP, RFC 6238, six digits, thirty seconds, the codes
+the RFC publishes held in a test. Super admins, IT admins and security
+managers must have one; a Super Admin can widen that to everybody. The
+password step ends in a signed, ten-minute cookie that is good for the
+second-step page and nothing else: no session exists until both are done,
+and the failure count does not reset until both are. First sign-in shows the
+QR code and the key as text, keeps the secret sealed under the tenant's own
+key (opening the page twice does not replace what the first look put in a
+phone), and on the first good code shows ten recovery codes once and keeps
+only their hashes. A code is good once: the step it was accepted for is
+recorded and that step or an earlier one is refused, so a code somebody
+watched being typed is no use (`--break-totpreplay`). A recovery code is
+spent in one statement, so two people holding one cannot both use it. A
+Super Admin resets someone's second step if they lose the phone and the
+codes. `--break-mfarequired` lets an administrator in on a password alone.
+
+**The front door.** The operator's own hostname used to redirect straight to
+the sign-up form, which sent every returning person to the page for
+strangers. It now has a home page with two ways in: "Sign in to your
+organisation", where a person types the short name their organisation chose
+(or the address they usually open it at) and is sent to that console's
+sign-in, and "Set up your company". A short name is turned into the
+console's address without looking anything up, so the form cannot be used to
+ask which organisations exist; the console answers 404 for one that does
+not, as it always did, and the name is public in DNS either way. A hostname
+is followed only if it resolves to an active organisation, so the form is not
+an open redirect, and anything with a slash, an at sign, a colon or a space
+is refused.
+
+**Leaving.** A local tenant that later gets an identity provider connects it
+on the Sign-in page; the switch is refused until a group is mapped to Super
+Admin and the provider's secret is given, because after it the accounts here
+stop signing in and the tenant would otherwise lock itself out of the one
+page that could fix it. The reverse, an identity-provider tenant moving to
+local accounts, is not built.
 
 ## One key per tenant
 

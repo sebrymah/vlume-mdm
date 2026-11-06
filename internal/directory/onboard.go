@@ -65,6 +65,17 @@ type NewTenant struct {
 	// so the first administrator can sign in and make the rest.
 	AdminGroup string
 
+	// Local sign-in (0044): a tenant with no identity provider. Protocol
+	// "local" takes no issuer, no secret and no admin group, and instead
+	// makes the first administrator an account here: either with the
+	// password they chose (OwnerPasswordHash, from the self-service
+	// sign-up) or invited by a link (OwnerInviteHash, from tenantctl).
+	OwnerEmail        string
+	OwnerName         string
+	OwnerPasswordHash string
+	OwnerInviteHash   []byte
+	OwnerCreatedBy    string
+
 	// Region is where the tenant's data is kept (T11); empty takes the
 	// deployment's default.
 	Region string
@@ -91,10 +102,21 @@ func (n NewTenant) consoleBase() string {
 // RedirectURL is where the provider sends the browser back: the OIDC
 // callback, or the SAML assertion consumer service.
 func (n NewTenant) RedirectURL() string {
-	if n.Protocol == "saml" {
+	switch n.Protocol {
+	case "saml":
 		return n.consoleBase() + "/signin/saml"
+	case "local":
+		// Nothing comes back from anywhere; the column is not null, and
+		// the sign-in page is the honest value.
+		return n.consoleBase() + "/signin"
 	}
 	return n.consoleBase() + "/signin/callback"
+}
+
+// InviteLink is where the first administrator of a local tenant sets a
+// password, given the token whose hash was stored.
+func (n NewTenant) InviteLink(token string) string {
+	return n.consoleBase() + "/signin/local/accept/" + token
 }
 
 // EntityID is our name to a SAML provider, and the address of our metadata.
@@ -211,8 +233,18 @@ func createTenant(ctx context.Context, tx pgx.Tx, in NewTenant) (uuid.UUID, erro
 			return uuid.Nil, errors.New("directory: the SAML certificate must be PEM (use identity.ParseCertificate)")
 		}
 		in.ClientID, in.ClientSecretSealed = in.EntityID(), nil
+	case "local":
+		in.OwnerEmail = strings.ToLower(strings.TrimSpace(in.OwnerEmail))
+		if !strings.Contains(in.OwnerEmail, "@") || len(in.OwnerEmail) < 3 {
+			return uuid.Nil, errors.New("directory: a tenant without an identity provider needs its first administrator's email address")
+		}
+		if in.OwnerPasswordHash == "" && len(in.OwnerInviteHash) == 0 {
+			return uuid.Nil, errors.New("directory: the first administrator needs a password or an invitation, or nobody can sign in")
+		}
+		in.Issuer, in.ClientID, in.ClientSecretSealed = "", "", nil
+		in.SAMLSSOURL, in.SAMLCertificate, in.SAMLSLOURL = "", "", ""
 	default:
-		return uuid.Nil, errors.New("directory: the protocol is oidc or saml")
+		return uuid.Nil, errors.New("directory: the protocol is oidc, saml or local")
 	}
 	if in.RoleClaim == "" {
 		in.RoleClaim = "groups"
@@ -220,7 +252,7 @@ func createTenant(ctx context.Context, tx pgx.Tx, in NewTenant) (uuid.UUID, erro
 	if err := checkConsoleURL(in.ConsoleURL, host); err != nil {
 		return uuid.Nil, err
 	}
-	if strings.TrimSpace(in.AdminGroup) == "" {
+	if in.Protocol != "local" && strings.TrimSpace(in.AdminGroup) == "" {
 		return uuid.Nil, errors.New(
 			"directory: name the group whose members are the first administrators, " +
 				"or nobody will be able to sign in")
@@ -267,6 +299,37 @@ func createTenant(ctx context.Context, tx pgx.Tx, in NewTenant) (uuid.UUID, erro
 			id, in.KeySealed); err != nil {
 			return uuid.Nil, err
 		}
+	}
+
+	if in.Protocol == "local" {
+		// The first administrator: an account, not a group. Written by the
+		// operator's role through the one INSERT policy it has on this
+		// table, which allows a Super Admin and nothing else, and no
+		// RETURNING because it may not read the row back.
+		status := "invited"
+		if in.OwnerPasswordHash != "" {
+			status = "active"
+		}
+		by := in.OwnerCreatedBy
+		if by == "" {
+			by = "tenant creation"
+		}
+		accountID := uuid.New()
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO local_accounts (id, tenant_id, email, name, role, status, password_hash, password_set_at, created_by)
+			VALUES ($1, $2, $3, $4, 'super_admin', $5, $6, CASE WHEN $6 <> '' THEN now() END, $7)`,
+			accountID, id, in.OwnerEmail, strings.TrimSpace(in.OwnerName), status, in.OwnerPasswordHash, by); err != nil {
+			return uuid.Nil, err
+		}
+		if len(in.OwnerInviteHash) > 0 {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO local_tokens (tenant_id, account_id, purpose, token_hash, expires_at)
+				VALUES ($1, $2, 'invite', $3, now() + interval '7 days')`,
+				id, accountID, in.OwnerInviteHash); err != nil {
+				return uuid.Nil, err
+			}
+		}
+		return id, nil
 	}
 
 	if _, err := tx.Exec(ctx, `

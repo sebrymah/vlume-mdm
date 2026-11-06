@@ -161,6 +161,8 @@ func seed(t *testing.T) map[uuid.UUID][]uuid.UUID {
 		`DELETE FROM commands`,
 		`DELETE FROM audit_events`,
 		`DELETE FROM devices`,
+		`DELETE FROM local_tokens`,
+		`DELETE FROM local_accounts`,
 		`DELETE FROM people`,
 		`DELETE FROM compliance_snapshots`,
 		`DELETE FROM policies`,

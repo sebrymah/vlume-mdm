@@ -48,6 +48,8 @@ func cleanSignups(t *testing.T) {
 	defer conn.Close(ctx)
 	for _, s := range []string{
 		`DELETE FROM signups`,
+		`DELETE FROM local_tokens WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'su-%')`,
+		`DELETE FROM local_accounts WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'su-%')`,
 		`DELETE FROM tenant_keys WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'su-%')`,
 		`DELETE FROM tenant_branding WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'su-%')`,
 		`DELETE FROM tenant_role_map WHERE tenant_id IN (SELECT id FROM tenants WHERE slug LIKE 'su-%')`,
@@ -442,5 +444,45 @@ func TestSignupIsAbsentWhenNotConfigured(t *testing.T) {
 		if rec.Code == 200 {
 			t.Fatalf("%s served sign-up with none configured", host)
 		}
+	}
+}
+
+// The front door. It used to be a redirect to the sign-up form, which sent a
+// returning person to the page for strangers. Now it has two ways in.
+func TestTheFrontDoorHasASignInAndASignUp(t *testing.T) {
+	f := withSignup(t, newFixture(t))
+	rec := public(t, f, "GET", signupHost, "/", "203.0.113.20", nil)
+	page := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(page, "Sign in to your organisation") || !strings.Contains(page, `href="/signup"`) ||
+		!strings.Contains(page, `action="/find"`) {
+		t.Fatalf("the front door (%d):\n%.800s", rec.Code, page)
+	}
+	find := func(org string) *httptest.ResponseRecorder {
+		return public(t, f, "POST", signupHost, "/find", "203.0.113.20", url.Values{"org": {org}})
+	}
+	// A short name goes to that organisation's sign-in, whether or not it
+	// exists: nothing is looked up, so the form tells a stranger nothing.
+	for _, org := range []string{"kalesi", "  Kalesi ", "https://kalesi/"} {
+		rec := find(org)
+		if rec.Code != 303 || !strings.HasSuffix(rec.Header().Get("Location"), "kalesi.mdm.example/signin") {
+			t.Fatalf("%q: %d %s", org, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+	if a, b := find("kalesi").Header().Get("Location"), find("no-such-organisation").Header().Get("Location"); strings.Replace(a, "kalesi", "X", 1) != strings.Replace(b, "no-such-organisation", "X", 1) {
+		t.Fatalf("a known and an unknown short name are answered differently: %s %s", a, b)
+	}
+	// A hostname is followed only if it is a customer's.
+	if rec := find("mdm.kalesi.example"); rec.Code != 303 || !strings.HasSuffix(rec.Header().Get("Location"), "mdm.kalesi.example/signin") {
+		t.Fatalf("a customer's own hostname: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	for _, bad := range []string{"evil.example", "evil.example/phish", "//evil.example", "kal esi", "a@b.example", "kalesi.mdm.example:8080@evil.example"} {
+		rec := find(bad)
+		if loc := rec.Header().Get("Location"); loc != "" {
+			t.Fatalf("%q was redirected to %s", bad, loc)
+		}
+	}
+	// The sign-in host serves this and sign-up and nothing of a tenant's.
+	if rec := public(t, f, "GET", signupHost, "/people", "203.0.113.20", nil); rec.Code != 404 {
+		t.Fatalf("the front door host served /people: %d", rec.Code)
 	}
 }

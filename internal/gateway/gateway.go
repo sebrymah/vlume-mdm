@@ -437,6 +437,13 @@ func (g *Gateway) Handler() http.Handler {
 		mux.Handle("GET /reports", g.page(authz.ViewDevices, g.consoleReports))
 		mux.Handle("GET /apps", g.page(authz.ViewDevices, g.consoleApps))
 		mux.Handle("GET /people", g.page(authz.ViewDevices, g.consolePeople))
+		// The tenant's own accounts (0044), and a person's own page.
+		mux.Handle("GET /users", g.page(authz.ManageAccess, g.consoleUsers))
+		mux.Handle("POST /users/invite", g.formPost(authz.ManageAccess, g.consoleUserInvite))
+		mux.Handle("POST /users/mfa-policy", g.formPost(authz.ManageAccess, g.consoleUserMFAPolicy))
+		mux.Handle("POST /users/{id}/{action}", g.formPost(authz.ManageAccess, g.consoleUserAct))
+		mux.Handle("GET /account", g.page(authz.ViewOwnDevices, g.consoleAccount))
+		mux.Handle("POST /account/password", g.formPost(authz.ViewOwnDevices, g.consoleAccountPassword))
 		mux.Handle("GET /people/{id}", g.page(authz.ViewDevices, g.consolePerson))
 		mux.Handle("POST /devices/{id}/recovery-key/reveal", g.formPost(authz.RetrieveKey, g.consoleRevealKey))
 		mux.Handle("GET /reports/compliance.pdf", g.guard(authz.ViewDevices, g.reportPDF))
@@ -621,6 +628,20 @@ func (g *Gateway) Handler() http.Handler {
 	outer := http.NewServeMux()
 	outer.Handle("GET /signin", http.HandlerFunc(g.signIn))
 	outer.Handle("GET /signin/callback", http.HandlerFunc(g.callback))
+	// The tenant with no identity provider (0044): the password, the
+	// second factor, an invitation, and a forgotten password. Each is
+	// refused for a tenant that signs in some other way.
+	outer.Handle("POST /signin/local", http.HandlerFunc(g.localSignIn))
+	outer.Handle("GET /signin/local/mfa", http.HandlerFunc(g.localMFA))
+	outer.Handle("POST /signin/local/mfa", http.HandlerFunc(g.localMFA))
+	outer.Handle("GET /signin/local/enrol", http.HandlerFunc(g.localEnrol))
+	outer.Handle("POST /signin/local/enrol", http.HandlerFunc(g.localEnrol))
+	outer.Handle("GET /signin/local/accept/{token}", g.linkPage("invite"))
+	outer.Handle("POST /signin/local/accept/{token}", g.setPassword("invite"))
+	outer.Handle("GET /signin/local/reset/{token}", g.linkPage("reset"))
+	outer.Handle("POST /signin/local/reset/{token}", g.setPassword("reset"))
+	outer.Handle("GET /signin/local/forgot", http.HandlerFunc(g.localForgot))
+	outer.Handle("POST /signin/local/forgot", http.HandlerFunc(g.localForgot))
 	// The SAML half: the provider posts the assertion back (so this one
 	// is a POST from another site, which is why the flow cookie it reads
 	// is set the way it is), and the metadata is what the tenant's

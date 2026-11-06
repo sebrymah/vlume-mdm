@@ -23,6 +23,9 @@ import (
 const (
 	ProtocolOIDC = "oidc"
 	ProtocolSAML = "saml"
+	// ProtocolLocal is no provider at all: accounts held in the platform,
+	// with a password and a second factor (0044).
+	ProtocolLocal = "local"
 )
 
 var (

@@ -42,6 +42,7 @@ import (
 
 	"platform/internal/directory"
 	"platform/internal/identity"
+	"platform/internal/localauth"
 	"platform/internal/platformkeys"
 	"platform/internal/secrets"
 )
@@ -81,12 +82,14 @@ func main() {
 			secretFile = fs.String("client-secret-file", "",
 				"a file holding the client secret; without it, the secret is read from standard input")
 			roleClaim  = fs.String("role-claim", "groups", "the claim carrying group membership")
-			protocol   = fs.String("protocol", "oidc", "oidc or saml")
+			protocol   = fs.String("protocol", "oidc", "oidc, saml or local (no identity provider)")
 			samlSSO    = fs.String("saml-sso-url", "", "SAML only: the provider's sign-in (SSO) URL")
 			samlSLO    = fs.String("saml-slo-url", "", "SAML only: the provider's single logout URL (optional)")
 			samlCert   = fs.String("saml-certificate-file", "", "SAML only: a file holding the provider's signing certificate (PEM or base64)")
 			adminGroup = fs.String("admin-group", "",
 				"the group whose members are the first administrators")
+			ownerEmail = fs.String("owner-email", "", "local only: the first administrator's email address")
+			ownerName  = fs.String("owner-name", "", "local only: the first administrator's name")
 		)
 		_ = fs.Parse(args)
 
@@ -98,7 +101,22 @@ func main() {
 		// SAML has no client secret: trust runs through the provider's
 		// certificate, so nothing is read from standard input.
 		var secret, certPEM string
-		if *protocol == "saml" {
+		var inviteToken string
+		var inviteHash []byte
+		switch {
+		case *protocol == "local":
+			// No identity provider: the first administrator is an account
+			// here, and gets a link that works once, for a week, to choose a
+			// password. Nothing is read from standard input.
+			if *ownerEmail == "" {
+				fail("--protocol local needs --owner-email: the first administrator")
+			}
+			var terr error
+			inviteToken, inviteHash, terr = localauth.NewToken()
+			if terr != nil {
+				fail("%v", terr)
+			}
+		case *protocol == "saml":
 			if *samlCert == "" || *samlSSO == "" {
 				fail("--protocol saml needs --saml-sso-url and --saml-certificate-file")
 			}
@@ -111,7 +129,7 @@ func main() {
 				fail("%v", err)
 			}
 			certPEM = norm
-		} else {
+		default:
 			var err error
 			secret, err = readSecret(*secretFile, os.Stdin)
 			if err != nil {
@@ -139,12 +157,32 @@ func main() {
 			RoleClaim: *roleClaim, AdminGroup: *adminGroup,
 			Protocol: *protocol, SAMLSSOURL: *samlSSO, SAMLCertificate: certPEM, SAMLSLOURL: *samlSLO,
 		}
-		if *protocol == "saml" {
+		if *protocol == "saml" || *protocol == "local" {
 			in.ClientSecretSealed = nil
+		}
+		if *protocol == "local" {
+			in.OwnerEmail, in.OwnerName, in.OwnerInviteHash = *ownerEmail, *ownerName, inviteHash
+			in.OwnerCreatedBy = "tenantctl"
 		}
 		id, err := dir.CreateTenant(ctx, in)
 		if err != nil {
 			fail("not created: %v", err)
+		}
+		if *protocol == "local" {
+			fmt.Printf(`Created %s (%s).
+
+  Console       https://%s
+  Sign-in       email and password, no identity provider
+  First admin   %s
+
+Give them this link. It works once, for seven days, and is shown only now:
+
+  %s
+
+They choose a password, then set up an authenticator app at first sign-in,
+and add everyone else from the Users page.
+`, in.Name, id, in.Host, in.OwnerEmail, in.InviteLink(inviteToken))
+			return
 		}
 		fmt.Printf(`Created %s (%s).
 

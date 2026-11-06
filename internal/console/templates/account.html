@@ -1,0 +1,38 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>Your account</h1>
+  <p class="sub">{{if .Account.Name}}{{.Account.Name}}, {{end}}{{.Account.Email}}, signed in as <strong>{{.Account.Role}}</strong>.</p>
+
+  <h2>Second step at sign-in</h2>
+  <p class="sub">{{if .Account.MFAOn}}On, with an authenticator app. {{.Account.RecoveryLeft}} recovery code{{if ne .Account.RecoveryLeft 1}}s{{end}} left.{{else if .Account.MFARequired}}Required for your role; you will set it up at your next sign-in.{{else}}Not set up. An administrator can make it required for everyone.{{end}}
+  Lost your phone and your recovery codes? A Super Admin can reset it for you.</p>
+
+  <h2 style="margin-top:24px">Change your password</h2>
+  <form method="post" action="/account/password" class="card" style="max-width:420px" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label style="display:block;margin-bottom:10px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Current password</span>
+      <input name="current" type="password" required autocomplete="current-password"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label style="display:block;margin-bottom:10px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">New password (12 or more characters)</span>
+      <input name="password" type="password" required minlength="12" autocomplete="new-password"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Again</span>
+      <input name="confirm" type="password" required minlength="12" autocomplete="new-password"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Change password</button>
+    <p class="sub" style="font-size:12px;margin:10px 0 0">Changing it signs you out everywhere else.</p>
+  </form>
+</main>
+</div>
+{{template "foot" .}}

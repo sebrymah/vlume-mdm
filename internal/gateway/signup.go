@@ -14,6 +14,7 @@ import (
 	"platform/internal/branding"
 	"platform/internal/console"
 	"platform/internal/directory"
+	"platform/internal/localauth"
 	"platform/internal/notify"
 	"platform/internal/secrets"
 )
@@ -113,9 +114,12 @@ func signupHash(token string) ([]byte, bool) {
 
 func (g *Gateway) signupHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /{$}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/signup", http.StatusFound)
-	}))
+	// The front door: two ways in, one for a person with an organisation
+	// here and one for a company that wants one. It used to be a redirect
+	// to the sign-up form, which sent every returning person to the page
+	// for strangers.
+	mux.Handle("GET /{$}", http.HandlerFunc(g.signupHome))
+	mux.Handle("POST /find", http.HandlerFunc(g.signupFind))
 	mux.Handle("GET /signup", http.HandlerFunc(g.signupStart))
 	mux.Handle("POST /signup", http.HandlerFunc(g.signupRequest))
 	mux.Handle("GET /signup/{token}", http.HandlerFunc(g.signupOpen))
@@ -168,6 +172,60 @@ func (g *Gateway) signupRender(w http.ResponseWriter, r *http.Request, status in
 	title string, v console.SignupView) {
 	v.TenantDomain = g.signup.TenantDomain
 	g.console.Public(w, r, status, g.signup.brand(), title, v)
+}
+
+func (g *Gateway) signupHome(w http.ResponseWriter, r *http.Request) {
+	g.signupRender(w, r, http.StatusOK, "Welcome", console.SignupView{State: "home"})
+}
+
+// signupFind sends a person to their own organisation's sign-in. It takes
+// the short address the organisation chose at sign-up, or a hostname of
+// its own. A short address is turned into the console's address without
+// looking anything up, so the form cannot be used to ask which
+// organisations exist: the address answers 404 for one that does not, as it
+// always did, and is public in DNS either way. A hostname is sent on only if
+// it is one of a customer's, so the form is not an open redirect.
+func (g *Gateway) signupFind(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := r.ParseForm(); err != nil {
+		g.signupRender(w, r, http.StatusBadRequest, "Welcome",
+			console.SignupView{State: "home", Detail: "That form could not be read."})
+		return
+	}
+	if !g.limiter.allowKey("find:"+g.callerIP(r), 30) {
+		w.Header().Set("Retry-After", "60")
+		g.signupRender(w, r, http.StatusTooManyRequests, "Welcome",
+			console.SignupView{State: "home", Detail: "Too many tries. Wait a minute."})
+		return
+	}
+	org := strings.ToLower(strings.TrimSpace(r.FormValue("org")))
+	org = strings.TrimPrefix(strings.TrimPrefix(org, "https://"), "http://")
+	org = strings.TrimSuffix(org, "/")
+	v := console.SignupView{State: "home", Slug: org}
+	if org == "" || len(org) > 253 || strings.ContainsAny(org, " /\\?#@:\r\n") {
+		v.Detail = "Type your organisation's address: the short name it chose, like kalesi, or the address you usually open it at."
+		g.signupRender(w, r, http.StatusUnprocessableEntity, "Welcome", v)
+		return
+	}
+	if !strings.Contains(org, ".") {
+		for _, c := range org {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				v.Detail = "A short name is letters, digits and hyphens."
+				g.signupRender(w, r, http.StatusUnprocessableEntity, "Welcome", v)
+				return
+			}
+		}
+		http.Redirect(w, r, g.signupConsoleURL(r, org)+"/signin", http.StatusSeeOther)
+		return
+	}
+	// A hostname: the console's own address, or a domain of the customer's.
+	// Only one that resolves to an active organisation is followed.
+	if host, err := g.dir.ResolveHost(r.Context(), org); err == nil && host.Active() {
+		http.Redirect(w, r, g.signupScheme(r)+"://"+org+"/signin", http.StatusSeeOther)
+		return
+	}
+	v.Detail = "We could not find an organisation at that address. Check it, or ask whoever set yours up."
+	g.signupRender(w, r, http.StatusNotFound, "Welcome", v)
 }
 
 func (g *Gateway) signupStart(w http.ResponseWriter, r *http.Request) {
@@ -411,19 +469,12 @@ func (g *Gateway) signupFinish(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/signup/"+token+"?said="+url.QueryEscape(msg), http.StatusSeeOther)
 	}
 
-	issuer := strings.TrimSpace(r.FormValue("issuer"))
-	clientID := strings.TrimSpace(r.FormValue("client_id"))
-	secret := strings.TrimSpace(r.FormValue("client_secret"))
-	roleClaim := strings.TrimSpace(r.FormValue("role_claim"))
+	// Two ways to sign in, chosen on the page: through the company's own
+	// identity provider, or with no provider at all, in which case the
+	// person making the tenant becomes its first administrator with the
+	// password they choose now (0044).
+	local := strings.TrimSpace(r.FormValue("mode")) == "local"
 	adminGroup := strings.TrimSpace(r.FormValue("admin_group"))
-	if issuer == "" || clientID == "" || secret == "" {
-		back("The issuer, client id and client secret are all needed.")
-		return
-	}
-	if adminGroup == "" {
-		back("Name the group whose members will be the first administrators, or nobody will be able to sign in.")
-		return
-	}
 	if g.keys == nil {
 		back("This deployment cannot create a tenant's keys. Tell the operator.")
 		return
@@ -436,20 +487,58 @@ func (g *Gateway) signupFinish(w http.ResponseWriter, r *http.Request) {
 		back("Something went wrong on our side. Try again in a moment.")
 		return
 	}
-	sealed, err := secrets.SealWith(tenantKey, 1, []byte(secret))
-	if err != nil {
-		g.log.Error("sign-up seal", "err", err)
-		back("Something went wrong on our side. Try again in a moment.")
-		return
-	}
-
-	id, err := g.dir.FinishSignup(r.Context(), hash, directory.NewTenant{
+	nt := directory.NewTenant{
 		Name: s.Company, Slug: s.Slug, Plan: "starter",
 		Host:       s.Slug + "." + g.signup.TenantDomain,
 		ConsoleURL: g.signupConsoleURL(r, s.Slug),
-		Issuer:     issuer, ClientID: clientID, ClientSecretSealed: sealed,
-		RoleClaim: roleClaim, AdminGroup: adminGroup, KeySealed: keySealed, Region: region,
-	})
+		KeySealed:  keySealed, Region: region,
+	}
+	if local {
+		name := strings.TrimSpace(r.FormValue("name"))
+		pw := r.FormValue("password")
+		if len(name) > 120 || strings.ContainsAny(name, "\r\n") {
+			back("That name is too long, or has a line break in it.")
+			return
+		}
+		if pw != r.FormValue("confirm") {
+			back("The two passwords are not the same.")
+			return
+		}
+		if err := localauth.CheckPassword(pw, s.Email, name, s.Company); err != nil {
+			back("That password will not do: " + err.Error() + ".")
+			return
+		}
+		encoded, err := localauth.Hash(pw)
+		if err != nil {
+			back("That password could not be used.")
+			return
+		}
+		nt.Protocol, nt.OwnerEmail, nt.OwnerName = "local", s.Email, name
+		nt.OwnerPasswordHash, nt.OwnerCreatedBy = encoded, "sign-up"
+	} else {
+		issuer := strings.TrimSpace(r.FormValue("issuer"))
+		clientID := strings.TrimSpace(r.FormValue("client_id"))
+		secret := strings.TrimSpace(r.FormValue("client_secret"))
+		roleClaim := strings.TrimSpace(r.FormValue("role_claim"))
+		if issuer == "" || clientID == "" || secret == "" {
+			back("The issuer, client id and client secret are all needed.")
+			return
+		}
+		if adminGroup == "" {
+			back("Name the group whose members will be the first administrators, or nobody will be able to sign in.")
+			return
+		}
+		sealed, err := secrets.SealWith(tenantKey, 1, []byte(secret))
+		if err != nil {
+			g.log.Error("sign-up seal", "err", err)
+			back("Something went wrong on our side. Try again in a moment.")
+			return
+		}
+		nt.Issuer, nt.ClientID, nt.ClientSecretSealed = issuer, clientID, sealed
+		nt.RoleClaim, nt.AdminGroup = roleClaim, adminGroup
+	}
+
+	id, err := g.dir.FinishSignup(r.Context(), hash, nt)
 	switch {
 	case errors.Is(err, directory.ErrSlugTaken), errors.Is(err, directory.ErrHostTaken):
 		// Taken between choosing and finishing. Clear the draft so the
@@ -476,13 +565,18 @@ func (g *Gateway) signupFinish(w http.ResponseWriter, r *http.Request) {
 	// the tenant exists either way, and the done page says the same thing.
 	consoleURL := g.signupConsoleURL(r, s.Slug)
 	brand := g.signup.brand()
+	howToSignIn := "Sign in with your company's identity provider. Members of " + adminGroup +
+		" are the first administrators; they map every other group from the console.\n\n"
+	if local {
+		howToSignIn = "Sign in with this email address and the password you chose. You will be asked to set up " +
+			"an authenticator app the first time. You are the first administrator: add everyone else from the Users page.\n\n"
+	}
 	welcome := notify.Message{
 		Subject: s.Company + " is set up on " + brand.ProductName,
 		Body: "Your console is ready.\n\n" +
 			"  Console   " + consoleURL + "\n" +
 			"  Sign in   " + consoleURL + "/signin\n\n" +
-			"Sign in with your company's identity provider. Members of " + adminGroup +
-			" are the first administrators; they map every other group from the console.\n\n" +
+			howToSignIn +
 			"What is left is on the Setup page inside: the product's own name and colours, " +
 			"where notifications go, and the first device.\n\n" +
 			"The link you used to set this up has now been spent and will not work again.\n",
@@ -491,7 +585,11 @@ func (g *Gateway) signupFinish(w http.ResponseWriter, r *http.Request) {
 	if err := g.signup.Mail.Deliver(r.Context(), s.Email, welcome); err != nil {
 		g.log.Error("welcome email", "err", err, "tenant", id)
 	}
-	http.Redirect(w, r, "/signup/"+token+"/done", http.StatusSeeOther)
+	done := "/signup/" + token + "/done"
+	if local {
+		done += "?how=local"
+	}
+	http.Redirect(w, r, done, http.StatusSeeOther)
 }
 
 func (g *Gateway) signupDone(w http.ResponseWriter, r *http.Request) {
@@ -509,6 +607,8 @@ func (g *Gateway) signupDone(w http.ResponseWriter, r *http.Request) {
 		ConsoleURL: g.signupConsoleURL(r, sum.Slug),
 	}
 	v.SignInURL = v.ConsoleURL + "/signin"
+	// Only the wording changes with this, so it is read from the address.
+	v.Local = r.URL.Query().Get("how") == "local"
 	g.signupRender(w, r, http.StatusOK, "Your console is ready", v)
 }
 

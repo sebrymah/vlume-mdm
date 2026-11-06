@@ -139,6 +139,9 @@ type IdentityConfig struct {
 	SAMLSLOURL           string
 	SAMLSigningKeySealed []byte
 	SAMLSigningCert      string
+	// LocalMFA is who must have a second factor under local sign-in:
+	// "admins" or "everyone" (0044).
+	LocalMFA string
 }
 
 var ErrNoIdentityConfig = errors.New("directory: tenant has no identity provider configured")
@@ -159,11 +162,11 @@ func (d *Directory) Identity(ctx context.Context, tenantID uuid.UUID) (IdentityC
 	err := d.pool.QueryRow(ctx, `
 		SELECT tenant_id, issuer, client_id, client_secret_sealed,
 		       redirect_url, role_claim, protocol, saml_sso_url, saml_certificate,
-		       saml_slo_url, saml_sp_key_sealed, saml_sp_cert
+		       saml_slo_url, saml_sp_key_sealed, saml_sp_cert, local_mfa
 		  FROM tenant_identity WHERE tenant_id = $1`, tenantID).Scan(
 		&c.TenantID, &c.Issuer, &c.ClientID, &c.SecretSealed,
 		&c.RedirectURL, &c.RoleClaim, &c.Protocol, &c.SAMLSSOURL, &c.SAMLCertificate,
-		&c.SAMLSLOURL, &c.SAMLSigningKeySealed, &c.SAMLSigningCert)
+		&c.SAMLSLOURL, &c.SAMLSigningKeySealed, &c.SAMLSigningCert, &c.LocalMFA)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return IdentityConfig{}, ErrNoIdentityConfig
 	}

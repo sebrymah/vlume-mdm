@@ -1346,6 +1346,82 @@ GRANT SELECT ON devices TO mdm_operator;"
     "					if false && !notify.PublicIP(ip.IP) {"
   ;;
 
+--break-lockout)
+  # Wrong passwords are counted and never lock. Anybody can guess at
+  # an account for as long as they have patience.
+  echo "==> NEGATIVE CONTROL: five wrong passwords do not lock an account"
+  patch internal/data/local.go \
+    "	LockAfter = 5" \
+    "	LockAfter = 500000"
+  ;;
+
+--break-totpreplay)
+  # A second-factor code is good more than once. A code somebody watched
+  # being typed signs them in too.
+  echo "==> NEGATIVE CONTROL: a second-factor code can be used twice"
+  patch internal/data/local.go \
+    "AND totp_last_step < \$2" \
+    "AND totp_last_step <= \$2"
+  ;;
+
+--break-lastadmin)
+  # The last Super Admin can be disabled or demoted. The tenant has
+  # nobody who can invite anyone, and nobody who can fix it.
+  echo "==> NEGATIVE CONTROL: the last Super Admin can be removed"
+  patch internal/data/local.go \
+    "	if targetIsOne && others == 0 {" \
+    "	if false && targetIsOne && others == 0 {"
+  ;;
+
+--break-enumeration)
+  # An address with no account is told so. Anyone can learn who has an
+  # account here, and the list is where phishing starts.
+  echo "==> NEGATIVE CONTROL: an unknown address gets a different answer"
+  patch internal/gateway/local_signin.go \
+    "		localauth.VerifyAbsent(password)" \
+    "		g.localRender(w, r, host, http.StatusNotFound, console.LocalView{Mode: \"signin\", Title: \"No such account\", Said: \"No account has that email address.\", Email: email}); return"
+  ;;
+
+--break-localtoken)
+  # An invitation or reset link works more than once. A link left in an
+  # inbox is a standing way in.
+  echo "==> NEGATIVE CONTROL: a spent link can be used again"
+  patch internal/data/local.go \
+    "		 WHERE token_hash = \$1 AND purpose = \$2 AND used_at IS NULL AND expires_at > \$3" \
+    "		 WHERE token_hash = \$1 AND purpose = \$2 AND expires_at > \$3"
+  # The link is checked twice, once when the page opens and again when the
+  # password is saved. Both must go, or the first still turns a spent link away.
+  patch internal/data/local.go \
+    "t.token_hash = \$1 AND t.purpose = \$2 AND t.used_at IS NULL AND t.expires_at > \$3" \
+    "t.token_hash = \$1 AND t.purpose = \$2 AND t.expires_at > \$3"
+  ;;
+
+--break-mfarequired)
+  # An administrator signs in on a password alone, whatever the policy.
+  echo "==> NEGATIVE CONTROL: administrators are not held to the second factor"
+  patch internal/data/local.go \
+    '	case "super_admin", "it_admin", "security_manager":' \
+    '	case "no_such_role":'
+  ;;
+
+--break-localprotocol)
+  # A password signs in at a tenant that has an identity provider, which
+  # is a way round the provider's own controls, offboarding above all.
+  echo "==> NEGATIVE CONTROL: a password signs in at an identity-provider tenant"
+  patch internal/gateway/local_signin.go \
+    "	if errors.Is(err, directory.ErrNoIdentityConfig) || (err == nil && !cfg.IsLocal()) {" \
+    "	if errors.Is(err, directory.ErrNoIdentityConfig) {"
+  ;;
+
+--break-sessionsend)
+  # Disabling an account, changing its role or resetting its password
+  # leaves the sessions it already has. The person is gone and still in.
+  echo "==> NEGATIVE CONTROL: ending an account's sessions does nothing"
+  patch internal/gateway/local_signin.go \
+    "SET sessions_invalid_before = GREATEST(tenant_admins.sessions_invalid_before, \$2)" \
+    "SET sessions_invalid_before = tenant_admins.sessions_invalid_before"
+  ;;
+
 --break-googlewords)
   # Google's refusal is shown as the raw JSON envelope. The administrator
   # who has to switch an API on gets a wall of braces instead of a sentence.
@@ -1386,6 +1462,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

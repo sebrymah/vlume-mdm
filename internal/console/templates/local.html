@@ -1,0 +1,97 @@
+{{template "head" .}}
+<header class="bar">
+  {{if .Brand.HasLogo}}<img src="/brand/logo" alt="" style="height:24px;max-width:120px;object-fit:contain;border-radius:4px;background:#fff;padding:2px">{{else}}<span class="mark" aria-hidden="true">{{.Brand.MarkLetter}}</span>{{end}}
+  <span style="font-size:14px;font-weight:600">{{.Brand.ProductName}}</span>
+</header>
+<main style="max-width:440px;margin:0 auto;padding-top:44px">
+  <h1 style="margin-bottom:6px">{{.Local.Title}}</h1>
+  {{if .Local.Notice}}<p style="margin:10px 0;padding:10px 12px;border-radius:6px;background:#E8F3EC;color:var(--ok);font-size:13.5px;line-height:1.5">{{.Local.Notice}}</p>{{end}}
+  {{if .Local.Said}}<p role="alert" style="margin:10px 0;padding:10px 12px;border-radius:6px;background:#FDE7E5;color:var(--bad);font-size:13.5px;line-height:1.5">{{.Local.Said}}</p>{{end}}
+
+  {{if eq .Local.Mode "signin"}}
+  <form method="post" action="/signin/local" class="card" autocomplete="on">
+    <input type="hidden" name="next" value="{{.Local.Next}}">
+    <label style="display:block;margin-bottom:10px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Email</span>
+      <input name="email" type="email" required autofocus autocomplete="username" value="{{.Local.Email}}"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Password</span>
+      <input name="password" type="password" required autocomplete="current-password"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="width:100%;padding:10px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Sign in</button>
+  </form>
+  <p class="sub" style="font-size:13px"><a href="/signin/local/forgot">Forgot your password?</a></p>
+
+  {{else if eq .Local.Mode "mfa"}}
+  <p class="sub">Open your authenticator app and type the six-digit code for {{.Brand.ProductName}}. Lost your phone? Type one of your recovery codes instead.</p>
+  <form method="post" action="/signin/local/mfa" class="card">
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Code</span>
+      <input name="code" required autofocus autocomplete="one-time-code" inputmode="text"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace;letter-spacing:.08em">
+    </label>
+    <button type="submit" style="width:100%;padding:10px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Continue</button>
+  </form>
+  <p class="sub" style="font-size:13px"><a href="/signin">Start again</a></p>
+
+  {{else if eq .Local.Mode "enrol"}}
+  <p class="sub">Your role needs a second step at sign-in. Scan this with an authenticator app (Microsoft Authenticator, Google Authenticator, 1Password, Authy), then type the code it shows.</p>
+  <div class="card" style="text-align:center">
+    <img src="{{.Local.QR}}" alt="QR code for your authenticator app" width="220" height="220" style="image-rendering:pixelated">
+    <p class="sub" style="font-size:12px;margin:10px 0 0">Cannot scan it? Type this key into the app:<br>
+      <code style="font-size:13px;word-break:break-all;user-select:all">{{.Local.Secret}}</code></p>
+  </div>
+  <form method="post" action="/signin/local/enrol" class="card">
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Code from the app</span>
+      <input name="code" required autofocus autocomplete="one-time-code" inputmode="numeric"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace;letter-spacing:.08em">
+    </label>
+    <button type="submit" style="width:100%;padding:10px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Turn it on and sign in</button>
+  </form>
+
+  {{else if eq .Local.Mode "codes"}}
+  <p class="sub">The second step is on. These ten recovery codes each work once, if you lose your phone. They are shown now and never again: write them down or put them in a password manager.</p>
+  <div class="card"><pre style="margin:0;font-size:15px;line-height:1.9;font-family:ui-monospace,Menlo,monospace;user-select:all">{{range .Local.Codes}}{{.}}
+{{end}}</pre></div>
+  <p><a href="{{.Local.Continue}}" style="display:inline-block;padding:10px 16px;border-radius:6px;background:var(--brand);color:#fff;text-decoration:none;font-weight:600">I have saved them. Continue</a></p>
+
+  {{else if eq .Local.Mode "accept" "reset"}}
+  <p class="sub">{{if eq .Local.Mode "accept"}}Welcome{{if .Local.Name}}, {{.Local.Name}}{{end}}. Choose a password for <strong>{{.Local.Email}}</strong>.{{else}}Choose a new password for <strong>{{.Local.Email}}</strong>.{{end}}
+    At least 12 characters; a few ordinary words strung together is easier to remember than a short mix of symbols.</p>
+  <form method="post" action="/signin/local/{{.Local.Mode}}/{{.Local.Token}}" class="card" autocomplete="off">
+    <label style="display:block;margin-bottom:10px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">New password</span>
+      <input name="password" type="password" required minlength="12" autofocus autocomplete="new-password"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Again</span>
+      <input name="confirm" type="password" required minlength="12" autocomplete="new-password"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="width:100%;padding:10px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Set password</button>
+  </form>
+
+  {{else if eq .Local.Mode "forgot"}}
+  <p class="sub">Type the email address you sign in with.{{if .Local.CanReset}} If it has an account here we will send a link that works once, for an hour.{{else}} This organisation cannot send email from here: ask your administrator for a reset link.{{end}}</p>
+  {{if .Local.CanReset}}
+  <form method="post" action="/signin/local/forgot" class="card">
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Email</span>
+      <input name="email" type="email" required autofocus autocomplete="username"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="width:100%;padding:10px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Send the link</button>
+  </form>
+  {{end}}
+  <p class="sub" style="font-size:13px"><a href="/signin">Back to sign in</a></p>
+
+  {{else}}
+  <p><a href="/signin">Go to sign in</a></p>
+  {{end}}
+</main>
+{{template "foot" .}}

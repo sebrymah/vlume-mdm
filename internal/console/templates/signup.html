@@ -8,7 +8,28 @@
   {{if .Said}}<div class="said" role="status">{{.Said}}</div>{{end}}
   {{if .Detail}}<div class="said" role="alert">{{.Detail}}</div>{{end}}
 
-  {{if eq .State "start"}}
+  {{if eq .State "home"}}
+  <h1>{{$.Brand.ProductName}}</h1>
+  <p class="sub" style="font-size:15px;line-height:1.55">Manage the laptops, phones and tablets your company
+  depends on, from one console of your own.</p>
+
+  <h2 style="margin-top:28px">Sign in to your organisation</h2>
+  <form method="post" action="/find" class="card">
+    <label style="display:block;margin-bottom:12px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Your organisation's address</span>
+      <input name="org" required autofocus maxlength="253" value="{{.Slug}}" placeholder="kalesi" autocomplete="off" autocapitalize="none" spellcheck="false"
+             style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      <span class="sub" style="display:block;font-size:12px;margin-top:4px">The short name your organisation chose, like <code>kalesi</code>, or the address you usually open it at.</span>
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Continue to sign in</button>
+  </form>
+
+  <h2 style="margin-top:28px">New here?</h2>
+  <p class="sub" style="font-size:14px;line-height:1.55">Set up a console for your company in a few minutes. You can sign
+  your people in through the identity provider you already have, or keep them here with an email and a password.</p>
+  <p><a href="/signup" style="display:inline-block;padding:9px 16px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-weight:600">Set up your company</a></p>
+
+  {{else if eq .State "start"}}
   <h1>Set up {{$.Brand.ProductName}} for your company</h1>
   <p class="sub" style="font-size:14px;line-height:1.55">We send a link to your
   work email. Opening it proves the address is yours; then you choose your
@@ -54,11 +75,14 @@
   </form>
 
   {{else if eq .State "idp"}}
-  <h1>Connect your company's sign-in</h1>
+  <h1>How will your people sign in?</h1>
   <p class="sub" style="font-size:14px;line-height:1.55">Your console will be at
-  <code>{{.ConsoleURL}}</code>. Nobody can sign in with a password here: your
-  people sign in through your own identity provider. Register an application
-  there first, with this redirect URL, then enter what it gives you.</p>
+  <code>{{.ConsoleURL}}</code>. If your company has an identity provider
+  (Microsoft Entra, Google Workspace, Okta), your people sign in through it and
+  nobody keeps a password here. If it does not, you keep your people here
+  yourself, with an email and a password each; scroll down.</p>
+  <h2 style="margin-top:22px">I have an identity provider</h2>
+  <p class="sub" style="font-size:13px">Register an application there first, with this redirect URL, then enter what it gives you.</p>
   <form method="post" action="/signup/{{.Token}}/slug" style="margin:4px 0 0">
     <input type="hidden" name="slug" value="">
     <button type="submit" style="border:0;background:none;color:var(--brand);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer;padding:0">Change the address</button>
@@ -115,13 +139,48 @@
     <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Create my console</button>
   </form>
 
+  <h2 style="margin-top:30px">I do not have one</h2>
+  <p class="sub" style="font-size:13px;line-height:1.55">You become the first administrator, signing in as
+  <strong>{{.Email}}</strong> with the password you choose here. Administrators also set up an authenticator
+  app the first time they sign in. You add everyone else from the console's Users page.</p>
+  <form method="post" action="/signup/{{.Token}}/finish" class="card" style="margin-top:10px" autocomplete="off">
+    <input type="hidden" name="mode" value="local">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Your name</span>
+        <input name="name" required autocomplete="name"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Password (12 or more characters)</span>
+        <input name="password" type="password" required minlength="12" autocomplete="new-password"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Again</span>
+        <input name="confirm" type="password" required minlength="12" autocomplete="new-password"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      {{if .Regions}}
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Where your data is kept</span>
+        <select name="region" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{range .Regions}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </label>
+      {{end}}
+    </div>
+    <button type="submit" style="margin-top:12px;padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Create my console with email and password</button>
+  </form>
+
   {{else if eq .State "done"}}
   <h1>Your console is ready</h1>
   <p class="sub" style="font-size:14px;line-height:1.55"><strong>{{.Company}}</strong>
   now has its own console at <a href="{{.ConsoleURL}}">{{.ConsoleURL}}</a>.
-  Sign in there with your company's identity provider. Members of the group
+  {{if .Local}}Sign in there as <strong>{{.Email}}</strong> with the password you chose. You will be asked to set up
+  an authenticator app first. Add everyone else from the Users page; the product's own name and colours are set up from inside.{{else}}Sign in there with your company's identity provider. Members of the group
   you named are its first administrators; everything else, including the
-  product's own name and colours, is set up from inside.</p>
+  product's own name and colours, is set up from inside.{{end}}</p>
   <p style="margin-top:26px"><a href="{{.SignInURL}}" style="display:inline-block;padding:9px 16px;border-radius:6px;background:var(--brand);color:#fff;text-decoration:none;font-weight:600">Sign in to your console</a></p>
   <p class="sub" style="font-size:12px;margin-top:18px">This link has now been used and will not work again.</p>
 

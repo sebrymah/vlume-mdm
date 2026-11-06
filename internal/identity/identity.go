@@ -71,6 +71,9 @@ type Config struct {
 	SAMLSLOURL      string
 	SAMLSigningKey  string
 	SAMLSigningCert string
+	// LocalMFA is who must have a second factor when the tenant keeps its
+	// own accounts: "admins" or "everyone" (0044).
+	LocalMFA string
 }
 
 // Claims is what we keep from an identity token. Deliberately small: a wider
@@ -201,6 +204,10 @@ func (c Config) validate() error {
 			c.SAMLSSOURL == "" || c.SAMLCertificate == "" {
 			return fmt.Errorf("%w: entity id, sign-in url and certificate are all required", ErrNotConfigured)
 		}
+	case ProtocolLocal:
+		// No provider to talk to: a local tenant's sign-in is the
+		// gateway's own form, and neither adapter has anything to do.
+		return ErrWrongProtocol
 	default:
 		return fmt.Errorf("%w: unknown protocol %q", ErrNotConfigured, c.Protocol)
 	}
@@ -209,3 +216,10 @@ func (c Config) validate() error {
 
 // IsSAML says which adapter a tenant's sign-in goes through.
 func (c Config) IsSAML() bool { return c.Protocol == ProtocolSAML }
+
+// IsLocal says the tenant has no identity provider: its people are
+// accounts held here (0044).
+func (c Config) IsLocal() bool { return c.Protocol == ProtocolLocal }
+
+// IsOIDC is the default: an empty protocol is OIDC.
+func (c Config) IsOIDC() bool { return c.Protocol == "" || c.Protocol == ProtocolOIDC }

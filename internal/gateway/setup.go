@@ -435,6 +435,11 @@ func (g *Gateway) consoleSaveIdentity(w http.ResponseWriter, r *http.Request, re
 
 	err := g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),
 		func(ctx context.Context, tx *data.Tx) error {
+			// A tenant that keeps its own accounts must not switch itself
+			// into a state nobody can sign in from (0044).
+			if e := g.guardLeavingLocal(ctx, tx, secret != ""); e != nil {
+				return e
+			}
 			var sealed []byte
 			if secret != "" {
 				var serr error
@@ -460,6 +465,10 @@ func (g *Gateway) consoleSaveIdentity(w http.ResponseWriter, r *http.Request, re
 			}
 			return data.AppendAudit(ctx, tx, "identity.saved", issuer)
 		})
+	if errors.Is(err, errMapAdminFirst) || errors.Is(err, errNeedSecret) {
+		back(w, r, "/identity", err.Error())
+		return
+	}
 	if err != nil {
 		g.log.Error("identity save", "tenant", res.Tenant.Slug, "err", err)
 		back(w, r, "/identity", "Not saved.")
@@ -515,6 +524,9 @@ func (g *Gateway) consoleSaveSAML(w http.ResponseWriter, r *http.Request, res Re
 
 	err := g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),
 		func(ctx context.Context, tx *data.Tx) error {
+			if e := g.guardLeavingLocal(ctx, tx, true); e != nil {
+				return e
+			}
 			// An empty certificate on the form keeps the one held, as an
 			// empty client secret does for OIDC. The first save needs one,
 			// which the table's own check enforces.
@@ -541,6 +553,10 @@ func (g *Gateway) consoleSaveSAML(w http.ResponseWriter, r *http.Request, res Re
 			}
 			return data.AppendAudit(ctx, tx, "identity.saved", "saml:"+entityID)
 		})
+	if errors.Is(err, errMapAdminFirst) {
+		back(w, r, "/identity", err.Error())
+		return
+	}
 	if err != nil {
 		if certPEM == nil {
 			back(w, r, "/identity", "Not saved. The first SAML save needs the provider's signing certificate.")

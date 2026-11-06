@@ -85,6 +85,8 @@ func newHarness(t *testing.T) harness {
 		`DELETE FROM commands`,
 		`DELETE FROM audit_events`,
 		`DELETE FROM devices`,
+		`DELETE FROM local_tokens`,
+		`DELETE FROM local_accounts`,
 		`DELETE FROM people`,
 		`DELETE FROM compliance_snapshots`,
 		`DELETE FROM policies`,

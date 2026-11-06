@@ -122,6 +122,11 @@ type page struct {
 	// MACs are the device's hardware addresses, what the network's door
 	// knows it by.
 	MACs []string
+	// Local sign-in (0044): the tenant keeps its own accounts.
+	LocalMode bool
+	Users     *Users
+	Account   *Account
+	Local     *LocalView
 	// People (0040): the listing, one person's page, and the person a
 	// device is assigned to.
 	PeopleQuery   string
@@ -169,7 +174,7 @@ func (m MyDevice) NeedsAttention() bool {
 	return m.Compliance == nil || m.Compliance.State != policy.Compliant
 }
 
-func navFor(role authz.Role, active string) []navItem {
+func navFor(role authz.Role, active, subject string, localMode bool) []navItem {
 	var out []navItem
 	add := func(label, href string, allowed bool) {
 		if allowed {
@@ -191,11 +196,15 @@ func navFor(role authz.Role, active string) []navItem {
 	// Only a Super Admin sees this entry at all: the control it leads to
 	// is absent for everybody else rather than present and refused.
 	add("Sign-in", "/identity", authz.Can(role, authz.ManageAccess))
+	// A tenant with no identity provider keeps its people here (0044): the
+	// Super Admin manages them, and each person has their own password.
+	add("Users", "/users", localMode && authz.Can(role, authz.ManageAccess))
 	add("Approvals", "/approvals", authz.Can(role, authz.ApproveWipe))
 	add("Reports", "/reports", authz.Can(role, authz.ViewDevices))
 	add("Apps", "/apps", authz.Can(role, authz.ViewDevices))
 	add("People", "/people", authz.Can(role, authz.ViewDevices))
 	add("Audit log", "/audit", authz.Can(role, authz.ViewAudit))
+	add("Account", "/account", localMode && data.IsLocalSubject(subject))
 	return out
 }
 
@@ -207,7 +216,7 @@ func (c *Console) render(w http.ResponseWriter, r *http.Request, s Session,
 	load func(context.Context, *data.Tx, *page) error) {
 
 	p := page{
-		Subject: s.Subject, Role: s.Role, Title: title, Nav: navFor(s.Role, active),
+		Subject: s.Subject, Role: s.Role, Title: title,
 		CSRF: s.CSRF, Said: r.URL.Query().Get("said"), Path: r.URL.Path,
 		CanLock:         authz.Can(s.Role, authz.LockDevice),
 		CanWipe:         authz.Can(s.Role, authz.RequestWipe),
@@ -224,6 +233,13 @@ func (c *Console) render(w http.ResponseWriter, r *http.Request, s Session,
 			return err
 		}
 		p.Brand = b
+		// Which sign-in the tenant uses decides two menu entries, so it is
+		// read in the same transaction as everything else on the page.
+		local, err := data.LocalModeOn(ctx, tx)
+		if err != nil {
+			return err
+		}
+		p.LocalMode = local
 		if load == nil {
 			return nil
 		}
@@ -233,6 +249,7 @@ func (c *Console) render(w http.ResponseWriter, r *http.Request, s Session,
 		http.Error(w, "could not render the page", http.StatusInternalServerError)
 		return
 	}
+	p.Nav = navFor(s.Role, active, s.Subject, p.LocalMode)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, name, p); err != nil {
@@ -633,6 +650,104 @@ type Identity struct {
 	NewTokenName string
 }
 
+// Users is the page where a Super Admin keeps a local tenant's people.
+type Users struct {
+	Accounts  []data.LocalAccount
+	Roles     []string
+	MFAPolicy string
+	// CanMail says an invitation can be emailed; without it the link is
+	// shown once for the administrator to hand over.
+	CanMail bool
+	// NewLink is shown once, on the page that made it, never through a
+	// redirect: a link in a query string is a link in the browser history.
+	NewLink, NewLinkFor, NewLinkKind string
+	Emailed                          bool
+	MailError                        string
+}
+
+// Account is a person's own page: who they are here and their password.
+type Account struct {
+	Email, Name, Role string
+	MFAOn             bool
+	MFARequired       bool
+	RecoveryLeft      int
+}
+
+// LocalView is every page a person sees before they have a session on a
+// local tenant: sign in, the second factor, enrolling it, choosing a
+// password from a link, asking for a reset, and the recovery codes.
+type LocalView struct {
+	Mode  string
+	Title string
+	Said  string
+	// Notice is good news, said plainly, above a form.
+	Notice string
+	Email  string
+	Name   string
+	Token  string
+	Next   string
+	// CanReset says the "forgot it" link goes somewhere: there is a way to
+	// send mail.
+	CanReset bool
+	// Enrolment: the secret as an app types it, and the QR code as a data
+	// URL, which html/template would otherwise rewrite.
+	Secret string
+	QR     template.URL
+	Codes  []string
+	// Continue is where the recovery-codes page goes next.
+	Continue string
+}
+
+// UsersPage renders the Users page.
+func (c *Console) UsersPage(w http.ResponseWriter, r *http.Request, s Session,
+	load func(context.Context, *data.Tx, *Users) error) {
+
+	c.render(w, r, s, "users.html", "/users", "Users",
+		func(ctx context.Context, tx *data.Tx, p *page) error {
+			var u Users
+			if err := load(ctx, tx, &u); err != nil {
+				return err
+			}
+			p.Users = &u
+			return nil
+		})
+}
+
+// AccountPage renders a person's own page.
+func (c *Console) AccountPage(w http.ResponseWriter, r *http.Request, s Session,
+	load func(context.Context, *data.Tx, *Account) error) {
+
+	c.render(w, r, s, "account.html", "/account", "Your account",
+		func(ctx context.Context, tx *data.Tx, p *page) error {
+			var a Account
+			if err := load(ctx, tx, &a); err != nil {
+				return err
+			}
+			p.Account = &a
+			return nil
+		})
+}
+
+// LocalPage renders a sign-in page with the tenant's own brand, before
+// anyone has a session.
+func (c *Console) LocalPage(w http.ResponseWriter, r *http.Request, claim string, status int, v LocalView) {
+	p := page{Title: v.Title, Brand: branding.Default(), Local: &v}
+	_ = c.store.WithTenant(r.Context(), claim, func(ctx context.Context, tx *data.Tx) error {
+		b, err := branding.Load(ctx, tx)
+		if err != nil {
+			return err
+		}
+		p.Brand = b
+		return nil
+	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if err := tmpl.ExecuteTemplate(w, "local.html", p); err != nil {
+		http.Error(w, v.Title, status)
+	}
+}
+
 func (c *Console) IdentityPage(w http.ResponseWriter, r *http.Request, s Session,
 	load func(context.Context, *data.Tx, *Identity) error) {
 
@@ -681,6 +796,9 @@ type SignupView struct {
 	Said   string
 	// Regions to choose from, when the operator runs more than one.
 	Regions []string
+	// Local says the tenant was made with no identity provider, which only
+	// changes the wording of the last page.
+	Local bool
 }
 
 // Public renders the sign-up page. It is the one render that touches no

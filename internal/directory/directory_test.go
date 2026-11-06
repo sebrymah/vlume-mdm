@@ -63,6 +63,8 @@ func seed(t *testing.T) {
 		`DELETE FROM commands`,
 		`DELETE FROM audit_events`,
 		`DELETE FROM devices`,
+		`DELETE FROM local_tokens`,
+		`DELETE FROM local_accounts`,
 		`DELETE FROM people`,
 		`DELETE FROM compliance_snapshots`,
 		`DELETE FROM policies`,
@@ -130,6 +132,14 @@ func TestTheDirectoryRoleCannotReachTenantData(t *testing.T) {
 		// under a claim, after the identity token has verified. The
 		// directory never needs it and must not have it.
 		`SELECT count(*) FROM tenant_role_map`,
+		`SELECT count(*) FROM local_accounts`,
+		`SELECT count(*) FROM local_tokens`,
+		// Local accounts (0044): the operator may open the door for the first
+		// administrator, a Super Admin and nothing else, and may not read,
+		// change or add to them afterwards.
+		`UPDATE local_accounts SET role = 'super_admin'`,
+		`DELETE FROM local_accounts`,
+		`UPDATE local_tokens SET used_at = NULL`,
 		`INSERT INTO devices (tenant_id, name, serial, os_family)
 		 VALUES ('11111111-1111-1111-1111-111111111111','x','y','macos')`,
 		// Onboarding (0014) let this role write the four rows a new tenant
@@ -231,5 +241,32 @@ func queryExec(t *testing.T, sql string, args ...any) {
 	defer conn.Close(ctx)
 	if _, err := conn.Exec(ctx, sql, args...); err != nil {
 		t.Fatalf("exec: %v", err)
+	}
+}
+
+// The operator may open the door for the first administrator of a tenant
+// that has no identity provider (0044), through one INSERT policy: a Super
+// Admin, invited or active, and a link that is an invitation. Anything
+// else is refused by row-level security, not by a missing privilege, which
+// is why this is not in the list above.
+func TestTheOperatorMaySeedASuperAdminAccountAndNothingElse(t *testing.T) {
+	seed(t)
+	d := open(t)
+	ctx := context.Background()
+	for _, sql := range []string{
+		`INSERT INTO local_accounts (tenant_id, email, role, status, created_by)
+		 VALUES ('11111111-1111-1111-1111-111111111111','e@kalesi.example','employee','invited','operator')`,
+		`INSERT INTO local_accounts (tenant_id, email, role, status, created_by)
+		 VALUES ('11111111-1111-1111-1111-111111111111','d@kalesi.example','super_admin','disabled','operator')`,
+		`INSERT INTO local_tokens (tenant_id, account_id, purpose, token_hash, expires_at)
+		 VALUES ('11111111-1111-1111-1111-111111111111', gen_random_uuid(), 'reset', 'x', now())`,
+	} {
+		err := d.probe(ctx, sql)
+		if err == nil {
+			t.Fatalf("the directory role succeeded at: %s", sql)
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), "row-level security") {
+			t.Fatalf("refused, but not by row-level security: %s -> %v", sql, err)
+		}
 	}
 }

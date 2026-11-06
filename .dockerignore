@@ -1,0 +1,5 @@
+.git
+dist
+packaging
+deploy/site
+*.md

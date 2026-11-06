@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vlume | Device management for your own organisation</title>
+<meta name="description" content="Enrol Android devices, set the rules they follow, see which are compliant, and lock or wipe a lost one. Your own sign-in, your own data.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b5cab'/%3E%3Cpath d='M8 10l8 13 8-13' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root{--ink:#14212e;--muted:#506172;--line:#dbe3ea;--bg:#ffffff;--soft:#f4f7fa;--brand:#0b5cab;--brand-ink:#ffffff}
+@media (prefers-color-scheme:dark){:root{--ink:#e8eef4;--muted:#9fb0c0;--line:#27384a;--bg:#0e1620;--soft:#142030;--brand:#4a9be8;--brand-ink:#08121c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.logo{font-weight:700;font-size:20px;letter-spacing:-.01em}
+a{color:var(--brand)}
+.btn{display:inline-block;background:var(--brand);color:var(--brand-ink);padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600;border:0;font-size:16px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
+.hero{padding:56px 0 40px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.12;letter-spacing:-.02em;margin:0 0 16px;max-width:18em}
+.lead{font-size:19px;color:var(--muted);max-width:36em;margin:0 0 26px}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.panel{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:22px;margin:8px 0 40px}
+.panel h2{margin:0 0 6px;font-size:20px}
+.panel p{margin:0 0 14px;color:var(--muted)}
+form{display:flex;gap:10px;flex-wrap:wrap}
+input[type=text]{flex:1 1 220px;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:16px;background:var(--bg);color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:0 0 48px}
+.card{border:1px solid var(--line);border-radius:12px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+h2.sec{font-size:24px;letter-spacing:-.01em;margin:0 0 16px}
+footer{border-top:1px solid var(--line);padding:22px 0 40px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo" id="name">Vlume</div>
+    <a class="btn ghost" id="signin-top" href="#signin">Sign in</a>
+  </header>
+
+  <section class="hero">
+    <h1>Know every company device. Keep it safe. Keep it yours.</h1>
+    <p class="lead">Enrol Android devices, set the rules they follow, see at a glance which are compliant, and lock or wipe one that goes missing. Sign in with your own identity provider, or with accounts we host for you.</p>
+    <div class="cta">
+      <a class="btn" id="signup" href="#">Set up your company</a>
+      <a class="btn ghost" href="#signin">Sign in to your organisation</a>
+    </div>
+  </section>
+
+  <section class="panel" id="signin">
+    <h2>Sign in to your organisation</h2>
+    <p>Type the short name your organisation chose when it was set up.</p>
+    <form id="find" method="post" action="https://app.example.com/find">
+      <input type="text" name="org" placeholder="for example: kalesi" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-label="Your organisation's short name">
+      <button class="btn" type="submit">Continue</button>
+    </form>
+  </section>
+
+  <h2 class="sec">What you get</h2>
+  <section class="grid">
+    <div class="card"><h3>Enrol in minutes</h3><p>Android Enterprise enrolment, with the device's owner known from day one.</p></div>
+    <div class="card"><h3>Rules that stick</h3><p>Set a policy once, assign it to the people who need it, and see who is out of line.</p></div>
+    <div class="card"><h3>Lost or stolen</h3><p>Lock a device or wipe it from the console, with an approval step and a record of who did it.</p></div>
+    <div class="card"><h3>Your sign-in</h3><p>Connect your identity provider, or use hosted accounts with a second step for every administrator.</p></div>
+    <div class="card"><h3>Kept apart</h3><p>Each organisation's data is separated in the database itself, not only in the application.</p></div>
+    <div class="card"><h3>A full record</h3><p>Every sign-in and every command is written down, and can be sent to your own security tools.</p></div>
+  </section>
+
+  <footer>
+    <span id="foot">Vlume</span> &middot; Android today, Windows next.
+  </footer>
+</div>
+<script src="config.js"></script>
+<script>
+(function () {
+  var s = window.SITE || {};
+  var app = (s.app || "").replace(/\/+$/, "");
+  if (s.name) {
+    document.title = s.name + " | Device management for your own organisation";
+    document.getElementById("name").textContent = s.name;
+    document.getElementById("foot").textContent = s.name;
+  }
+  if (app) {
+    document.getElementById("find").action = app + "/find";
+    document.getElementById("signup").href = app + "/signup";
+  }
+})();
+</script>
+</body>
+</html>

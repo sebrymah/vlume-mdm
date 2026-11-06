@@ -2286,6 +2286,17 @@ could have the export posted inside this platform's own network;
 notices. A bucket that refuses is said plainly and nothing is recorded as
 sent.
 
+The address rule the webhook and the bucket share is a refusal list for
+IPv4 and an allow-list for IPv6, because the shapes differ: IPv4 has a
+handful of named private ranges, while IPv6's global unicast is one block
+(2000::/3) and everything outside it is link-local, unique-local, discard,
+documentation, or a transition format carrying an IPv4 address inside an
+IPv6 one. NAT64 is the sharp one: with a translator on the path,
+`64:ff9b::169.254.169.254` is the metadata service wearing an IPv6
+address. It falls outside 2000::/3 and is refused; 6to4 (`2002::/16`) is
+inside it, so the four bytes it carries are judged by the IPv4 rules,
+which is how `2002:a9fe:a9fe::` is refused and `2002:0808:0808::` is not.
+
 **Offboard** (`tenantctl offboard <slug> --confirm <slug>`): every row of
 the tenant's in every tenant table, in foreign-key order, deleted by
 `app.offboard_tenant`, a `SECURITY DEFINER` function owned by `mdm_reaper`,

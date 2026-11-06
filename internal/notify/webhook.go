@@ -115,9 +115,28 @@ func publicIP(ip net.IP) bool {
 		}
 		return true
 	}
-	// IPv6: refuse unique-local, and the IPv4-mapped form of anything the
-	// rules above would have refused.
-	if ip[0]&0xfe == 0xfc {
+	// IPv6. The IPv4-mapped form (::ffff:a.b.c.d) never reaches here: To4
+	// above converts it, so it is judged by the IPv4 rules.
+	//
+	// What is left is an allow-list, because the refusal list is the wrong
+	// shape here: global unicast is 2000::/3 and everything outside it is
+	// unique-local, link-local, the discard prefix, the documentation
+	// range, or one of the transition formats that carries an IPv4
+	// address inside an IPv6 one. NAT64 (64:ff9b::/96) is the sharpest of
+	// those: with a translator on the path, 64:ff9b::169.254.169.254 is
+	// the metadata service wearing an IPv6 address, and it is outside
+	// 2000::/3, so it is refused here.
+	if ip[0]&0xe0 != 0x20 {
+		return false
+	}
+	// Inside 2000::/3, 6to4 (2002::/16) carries its IPv4 address in the
+	// next four bytes: 2002:a9fe:a9fe:: is 169.254.169.254 again. Judge
+	// the address it carries by the rules above.
+	if ip[0] == 0x20 && ip[1] == 0x02 {
+		return publicIP(net.IPv4(ip[2], ip[3], ip[4], ip[5]))
+	}
+	// The documentation range, which nothing routable uses.
+	if ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8 {
 		return false
 	}
 	return true

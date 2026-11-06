@@ -381,12 +381,23 @@ func TestTheAddressRangesThatAreRefused(t *testing.T) {
 		"127.0.0.1", "10.0.0.5", "192.168.1.1", "172.16.0.1",
 		"100.64.0.1", // carrier-grade NAT, which Go does not call private
 		"0.0.0.0", "::1", "fd00::1", "224.0.0.1",
+		// The same addresses wearing an IPv6 one. A translator on the
+		// path turns the first two back into the metadata service.
+		"64:ff9b::a9fe:a9fe",     // NAT64
+		"2002:a9fe:a9fe::",       // 6to4
+		"::ffff:169.254.169.254", // IPv4-mapped
+		"::ffff:10.0.0.5",
+		"fe80::1",     // link-local
+		"100::1",      // the discard prefix
+		"2001:db8::1", // documentation
 	} {
 		if notify.PublicIPForTest(bad) {
 			t.Errorf("%s is treated as a public address", bad)
 		}
 	}
-	for _, good := range []string{"8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700::1111"} {
+	for _, good := range []string{"8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700::1111",
+		"2002:0808:0808::", // 6to4 carrying 8.8.8.8, which is public
+	} {
 		if !notify.PublicIPForTest(good) {
 			t.Errorf("%s is refused as if it were internal", good)
 		}

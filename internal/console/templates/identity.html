@@ -223,6 +223,48 @@
   not in it. Making one is recorded in the audit log.</p>
   <p><a href="/export" style="display:inline-block;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-weight:600">Download the export</a></p>
 
+  <p class="sub" style="margin-top:14px">Or send it straight to your own storage. Any S3-compatible
+  bucket takes it: AWS S3, Cloudflare R2, MinIO, Backblaze B2, Wasabi. The keys you type
+  here are used for this one upload and are not kept, not logged and not in the audit line,
+  which names the bucket and the file.</p>
+  <form method="post" action="/export/bucket" class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/identity">
+    <label style="grid-column:1/-1">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Endpoint</span>
+      <input name="endpoint" required placeholder="https://s3.eu-west-1.amazonaws.com"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label>
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Bucket</span>
+      <input name="bucket" required placeholder="our-backups"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label>
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Folder inside it (optional)</span>
+      <input name="prefix" placeholder="mdm"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label>
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Region</span>
+      <input name="region" placeholder="eu-west-1"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label>
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Access key id</span>
+      <input name="access_key" required autocomplete="off"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace">
+    </label>
+    <label style="grid-column:1/-1">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Secret access key</span>
+      <input name="secret_key" type="password" required autocomplete="off"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace">
+    </label>
+    <div style="grid-column:1/-1">
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:1px solid var(--line);background:#fff;font:inherit;font-weight:600;cursor:pointer">Send the export to the bucket</button>
+    </div>
+  </form>
+
   <h2 style="margin-top:28px">Move to another region</h2>
   <p class="sub">A move bundle carries everything, sealed values included, for
   the region you are moving to. The key below comes from that region's operator;

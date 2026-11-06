@@ -224,3 +224,7 @@ func PublicIPForTest(s string) bool {
 	}
 	return publicIP(ip)
 }
+
+// PublicIP says whether an address is one on the public internet, by the
+// same rules the webhook dials by. The export-to-bucket sender uses it.
+func PublicIP(ip net.IP) bool { return publicIP(ip) }

@@ -188,6 +188,7 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-slosig        # act on a provider's logout request without its signature, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
+./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
 ./run_go.sh --break-lostbrand # show the operator's name on a lost phone, expect a FAILURE
 ./run_go.sh --break-lostcontact # drop who to call from a lost phone, expect a FAILURE
 ./run_go.sh --break-reportbrand # put the operator's name on the compliance PDF, expect a FAILURE
@@ -884,9 +885,12 @@ tenant, and a report does not simply take one another device holds: a
 report is the device's own word, and a word that could move a clean
 laptop's address onto a quarantined one would let the quarantined one
 borrow the clean one's answer at the door. The address moves only when its
-holder has let go of it, which is retired, or quiet for longer than the
-engine tolerates, and never from a device in quarantine; a holder that is
-reporting keeps it and the claim is written down (`device.mac_contested`).
+holder has let go of it, which is retired, or compliant and quiet for
+longer than the engine tolerates. Never from a device in quarantine, and
+never from one whose last word was a failure or nothing: the door denies
+such a device, and letting its address move to a clean claimant would turn
+that deny into an allow for whoever still carries the address. A holder
+that keeps it has the claim written down (`device.mac_contested`).
 The honest case, a dock moved between laptops, needs no contest: the first
 laptop's next report no longer lists the dock, the row goes, and the second
 laptop's claim lands on nothing. `--break-macmove` leaves an address with a
@@ -2266,6 +2270,21 @@ nothing else. Sealed secrets, token hashes and one-time codes are replaced
 with `[not exported]`: an export is a file that will be emailed, and a file
 that will be emailed is not a vault. `--break-exportsecret` lets them
 travel.
+
+**Or sent to the tenant's own bucket**, from the same page: any
+S3-compatible store (AWS S3, Cloudflare R2, MinIO, Backblaze B2, Wasabi)
+takes a PutObject signed with Signature Version 4, which is HMAC and no
+SDK (`internal/gateway/bucket.go`). The keys are typed for that one upload
+and are never kept, logged or audited; the audit line names the endpoint,
+the bucket and the object. The endpoint is held to the webhook's rule and
+then some: https, and every address its name resolves to must be on the
+public internet, checked at dial time rather than at save time, so a name
+that resolves to one public and one private address is refused whole.
+Otherwise "my bucket" could be the metadata service and a Super Admin
+could have the export posted inside this platform's own network;
+`--break-bucketssrf` dials whatever the name resolves to and the test
+notices. A bucket that refuses is said plainly and nothing is recorded as
+sent.
 
 **Offboard** (`tenantctl offboard <slug> --confirm <slug>`): every row of
 the tenant's in every tenant table, in foreign-key order, deleted by

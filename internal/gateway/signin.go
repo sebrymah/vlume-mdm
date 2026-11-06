@@ -130,6 +130,13 @@ func localPath(s string) string {
 	if strings.ContainsAny(s, "\\\r\n") {
 		return ""
 	}
+	// And every other control character, which a header or a browser may
+	// treat as a separator of its own.
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
 	return s
 }
 

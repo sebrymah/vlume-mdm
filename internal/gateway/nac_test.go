@@ -104,10 +104,19 @@ func TestAnAddressFollowsTheDeviceThatReportsIt(t *testing.T) {
 	if rec.Code != 200 || body["access"] != "allow" || body["serial"] == "C02XK4YTQ6NV" {
 		t.Fatalf("the dock's address does not answer for the second laptop: %d %v", rec.Code, body)
 	}
-	// A holder that has gone quiet for longer than the engine tolerates
-	// has let go: the first laptop claims the dock while the second is
-	// stale, and gets it.
-	exec(t, `UPDATE devices SET last_report_at = now() - interval '10 days' WHERE id = $1`, second)
+	// A holder that was compliant and has gone quiet for longer than the
+	// engine tolerates has let go: the first laptop claims the dock while
+	// the second is stale, and gets it. A stale holder whose last word was
+	// a failure keeps it: the door denies it, and its address moving to a
+	// clean claimant would turn that into an allow.
+	exec(t, `UPDATE devices SET last_report_at = now() - interval '10 days', state = 'not_compliant' WHERE id = $1`, second)
+	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean(), dock)); code != 200 {
+		t.Fatal("first claims from a stale failing holder")
+	}
+	if n := adminCount(t, `SELECT count(*) FROM device_macs WHERE mac = $1 AND device_id = $2`, dock, second); n != 1 {
+		t.Fatal("a stale failing holder lost its address")
+	}
+	exec(t, `UPDATE devices SET last_report_at = now() - interval '10 days', state = 'compliant' WHERE id = $1`, second)
 	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean(), dock)); code != 200 {
 		t.Fatal("first claims it back")
 	}

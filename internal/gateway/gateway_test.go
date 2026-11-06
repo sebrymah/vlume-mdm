@@ -296,6 +296,9 @@ func newFixtureWith(t *testing.T, push command.PushProvider) fixture {
 		// come back. Production leaves this false and main.go warns loudly
 		// when it is on.
 		InsecureCookies: true,
+		// The export-to-bucket test's bucket is an httptest server on
+		// loopback, which the dial guard refuses in a deployment.
+		AllowPrivateBuckets: true,
 	})
 	worker := notify.NewWorker(notifier, store, signer,
 		func(ctx context.Context) ([]uuid.UUID, error) { return dir.ActiveTenantIDs(ctx) },

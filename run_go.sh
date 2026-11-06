@@ -1335,6 +1335,17 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	if false ||"
   ;;
 
+--break-bucketssrf)
+  # The export-to-bucket sender dials whatever the endpoint's name
+  # resolves to. "my bucket" becomes the metadata service, and a tenant's
+  # Super Admin can have the whole export posted inside this platform's
+  # own network.
+  echo "==> NEGATIVE CONTROL: the export is sent to any address the endpoint resolves to"
+  patch internal/gateway/bucket.go \
+    "					if !g.allowPrivateBuckets && !notify.PublicIP(ip.IP) {" \
+    "					if false && !notify.PublicIP(ip.IP) {"
+  ;;
+
 --break-googlewords)
   # Google's refusal is shown as the raw JSON envelope. The administrator
   # who has to switch an API on gets a wall of braces instead of a sentence.
@@ -1374,7 +1385,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-saml --break-samlhost --break-remediate --break-nativebounds"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
-  echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer"
+  echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

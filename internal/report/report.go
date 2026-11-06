@@ -144,14 +144,30 @@ func CSV(w io.Writer, r Report) error {
 		if row.ReportedAt != nil {
 			reported = row.ReportedAt.UTC().Format(time.RFC3339)
 		}
-		if err := cw.Write([]string{row.Name, row.Serial, row.OSFamily, row.Ownership, row.AssignedTo,
+		if err := cw.Write(cells(row.Name, row.Serial, row.OSFamily, row.Ownership, row.AssignedTo,
 			row.Verdict, reported, findingsText(row.Findings, "; "), strings.Join(row.Policies, "; "),
-			row.HeldBy, strings.Join(row.MACs, " ")}); err != nil {
+			row.HeldBy, strings.Join(row.MACs, " "))); err != nil {
 			return err
 		}
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// cells neutralises what a spreadsheet would run. A device named
+// "=HYPERLINK(...)" or a person called "+1" is text here, and a cell that
+// starts with =, +, -, @, a tab or a carriage return is prefixed with an
+// apostrophe so the spreadsheet shows it rather than evaluates it. The
+// names come from devices and from people, which is to say from anyone.
+func cells(vs ...string) []string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+			v = "'" + v
+		}
+		out[i] = v
+	}
+	return out
 }
 
 func findingsText(fs []policy.Finding, sep string) string {

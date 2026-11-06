@@ -53,11 +53,13 @@ func NormaliseMAC(s string) (string, bool) {
 // report is the device's own word, and a word that could move a clean
 // laptop's address onto a quarantined one would let the quarantined one
 // borrow the clean one's answer at the door. The address moves only when
-// its holder has let go of it: the holder is retired, or has not reported
-// within maxAge (the engine's own limit), and never from a device in
-// quarantine. A holder that is reporting and still lists the address keeps
-// it, and the claim is written down (device.mac_contested) for a person to
-// look at. The common honest case, a dock moved between laptops, needs no
+// its holder has let go of it: the holder is retired, or was compliant
+// and has not reported within maxAge (the engine's own limit). Never from
+// a device in quarantine, and never from one whose last word was a
+// failure or nothing: the door denies such a device, and letting its
+// address move to a clean claimant would turn that deny into an allow for
+// whoever still carries the address. A holder that keeps the address has
+// the claim written down (device.mac_contested) for a person to look at. The common honest case, a dock moved between laptops, needs no
 // contest: the first laptop's next report no longer lists the dock, the
 // row goes, and the second laptop's claim lands on nothing.
 func ReplaceMACs(ctx context.Context, tx *Tx, deviceID uuid.UUID, macs []string, now time.Time, maxAge time.Duration) error {
@@ -94,7 +96,7 @@ func ReplaceMACs(ctx context.Context, tx *Tx, deviceID uuid.UUID, macs []string,
 		}
 		if previous != nil {
 			letGo := holderState == "retired" ||
-				(holderState != "quarantined" && (holderLast == nil || now.Sub(*holderLast) > maxAge))
+				(holderState == "compliant" && holderLast != nil && now.Sub(*holderLast) > maxAge)
 			if !letGo {
 				if err := AppendAudit(ctx, tx, "device.mac_contested",
 					"mac:"+mac+" held_by:"+previous.String()+" claimed_by:"+deviceID.String()); err != nil {

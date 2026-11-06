@@ -178,3 +178,35 @@ func raw(t *testing.T, f fixture, r *http.Request) *httptest.ResponseRecorder {
 	f.h.ServeHTTP(rec, r)
 	return rec
 }
+
+// A device name, and a person's name, come from whoever typed them. A
+// spreadsheet runs a cell that starts with =, +, - or @, so the export
+// neutralises those: the report is read in Excel and Sheets, and a report
+// that can run something is a report nobody can safely open.
+func TestTheCSVDoesNotHandASpreadsheetAFormula(t *testing.T) {
+	f := newFixture(t)
+	baseline(t, f)
+	devs := f.devices[tenantA]
+	exec(t, `UPDATE devices SET name = '=HYPERLINK("https://evil.example","click")' WHERE id = $1`, devs[0])
+	assign(t, devs[1], "+1-800-not-a-person@kalesi.example")
+
+	rec := raw(t, f, req(t, "GET", hostA, "/api/reports/compliance?format=csv", "a-auditor"))
+	rows, err := csv.NewReader(bytes.NewReader(rec.Body.Bytes())).ReadAll()
+	if err != nil || rec.Code != 200 {
+		t.Fatalf("csv: %d %v", rec.Code, err)
+	}
+	neutralised := 0
+	for _, r := range rows[1:] {
+		for _, cell := range r {
+			if cell != "" && strings.ContainsRune("=+-@\t\r", rune(cell[0])) {
+				t.Fatalf("a cell a spreadsheet would run reached the CSV: %q", cell)
+			}
+			if strings.HasPrefix(cell, "'=HYPERLINK") || strings.HasPrefix(cell, "'+1-800") {
+				neutralised++
+			}
+		}
+	}
+	if neutralised < 2 {
+		t.Fatalf("the names are not in the CSV at all: %v", rows)
+	}
+}

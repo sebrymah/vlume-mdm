@@ -127,6 +127,10 @@ type Config struct {
 	// is for local development and for tests, and main.go warns when it is
 	// on.
 	InsecureCookies bool
+	// AllowPrivateBuckets lets the export-to-bucket sender reach a
+	// loopback or private address, for a test's fake bucket. Never set
+	// in a deployment.
+	AllowPrivateBuckets bool
 	// CSRFKey signs the console's form tokens. A restart with a new key
 	// invalidates open forms, which is why it is configuration rather than
 	// something generated at startup.
@@ -174,19 +178,20 @@ type Gateway struct {
 	log          *slog.Logger
 	claimTTL     time.Duration
 
-	sessions        *session.Signer
-	oidc            *identity.OIDC
-	saml            *identity.SAML
-	sealer          secrets.Sealer
-	enrol           *enrol.Service
-	notify          *notify.Service
-	insecureCookies bool
-	signup          *SignupConfig
-	androidCallback string
-	mail            notify.Channel
-	trustedProxies  []netip.Prefix
-	android         android.Provider
-	region          string
+	sessions            *session.Signer
+	oidc                *identity.OIDC
+	saml                *identity.SAML
+	sealer              secrets.Sealer
+	enrol               *enrol.Service
+	notify              *notify.Service
+	insecureCookies     bool
+	allowPrivateBuckets bool
+	signup              *SignupConfig
+	androidCallback     string
+	mail                notify.Channel
+	trustedProxies      []netip.Prefix
+	android             android.Provider
+	region              string
 	// keys is the sealer as a keyring, for the one place that needs to
 	// make a tenant key before a tenant exists: sign-up.
 	keys *secrets.Keyring
@@ -209,13 +214,14 @@ func New(cfg Config) *Gateway {
 		idp: cfg.Identity, pipe: cfg.Pipeline, csrfKey: cfg.CSRFKey,
 		limiter: newLimiter(cfg.Store, cfg.Log), log: cfg.Log, claimTTL: 2 * time.Minute,
 		sessions: cfg.Sessions, oidc: cfg.OIDC, saml: cfg.SAML, sealer: cfg.Sealer, enrol: cfg.Enrol, notify: cfg.Notify,
-		insecureCookies: cfg.InsecureCookies,
-		signup:          cfg.Signup,
-		androidCallback: strings.TrimSuffix(cfg.AndroidCallbackBase, "/"),
-		mail:            cfg.Mail,
-		trustedProxies:  cfg.TrustedProxies,
-		android:         cfg.Android,
-		region:          cfg.Region,
+		insecureCookies:     cfg.InsecureCookies,
+		allowPrivateBuckets: cfg.AllowPrivateBuckets,
+		signup:              cfg.Signup,
+		androidCallback:     strings.TrimSuffix(cfg.AndroidCallbackBase, "/"),
+		mail:                cfg.Mail,
+		trustedProxies:      cfg.TrustedProxies,
+		android:             cfg.Android,
+		region:              cfg.Region,
 	}).wire().wireKeys(cfg)
 }
 
@@ -251,7 +257,7 @@ func (g *Gateway) resolve(r *http.Request) (Resolution, int, string) {
 		return Resolution{}, http.StatusInternalServerError, "host lookup failed"
 	}
 	if !host.Active() && !(host.Exporting() && (r.URL.Path == "/api/export" || r.URL.Path == "/export" ||
-		r.URL.Path == "/api/export/move" || r.URL.Path == "/export/move" || strings.HasPrefix(r.URL.Path, "/signin"))) {
+		r.URL.Path == "/api/export/move" || r.URL.Path == "/export/move" || r.URL.Path == "/export/bucket" || strings.HasPrefix(r.URL.Path, "/signin"))) {
 		return Resolution{}, http.StatusForbidden, "tenant is not active"
 	}
 	if g.region != "" && host.Region != "" && host.Region != g.region {
@@ -526,6 +532,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux.Handle("POST /api/export/move", g.guard(authz.ManageAccess, g.apiMoveExport))
 	mux.Handle("POST /api/keys/rotate", g.guard(authz.ManageAccess, g.apiRotateKey))
 	mux.Handle("GET /export", g.guard(authz.ManageAccess, g.apiExport))
+	mux.Handle("POST /export/bucket", g.formPost(authz.ManageAccess, g.consoleExportBucket))
 	mux.Handle("POST /export/move", g.formPost(authz.ManageAccess, func(w http.ResponseWriter, r *http.Request, res Resolution) {
 		g.apiMoveExport(w, r)
 	}))

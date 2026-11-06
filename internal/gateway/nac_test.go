@@ -11,7 +11,13 @@ import (
 // The network's door, asked the way a NAC asks: by MAC address, and in
 // the shape Cisco ISE asks in.
 
+// withMACs adds the addresses to a report. None given is an empty list,
+// which says "no addresses"; nil would say "did not say" and leave the
+// stored ones alone.
 func withMACs(rep map[string]any, macs ...string) map[string]any {
+	if macs == nil {
+		macs = []string{}
+	}
 	rep["mac_addresses"] = macs
 	return rep
 }
@@ -72,33 +78,101 @@ func TestTheDoorAnswersByMACInAnyForm(t *testing.T) {
 	}
 }
 
-// The control --break-macmove leaves an address with the device that
-// reported it first. A dock moved from a quarantined laptop to a clean
-// one would then keep the clean one off the network, and the reverse
-// would let a quarantined one on.
+// An address moves with the dock: the first laptop stops reporting it,
+// the second reports it, and the door answers for the second. The control
+// --break-macmove leaves it with the first.
 func TestAnAddressFollowsTheDeviceThatReportsIt(t *testing.T) {
 	f := newFixture(t)
 	quarantiningBaseline(t, f)
 	first, second := f.devices[tenantA][0], f.devices[tenantA][1]
 	token, _ := mintToken(t, f, "a-super", "NAC")
 	const dock = "00:e0:4c:68:00:01"
+	clean := func() map[string]any { return map[string]any{"passcode_set": true, "disk_encryption": true} }
 
-	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(map[string]any{"passcode_set": true, "disk_encryption": true}, dock)); code != 200 {
+	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean(), dock)); code != 200 {
 		t.Fatal("first report")
 	}
-	if code, b := reportAs(t, f, hostA, tenantA, first, withMACs(failingReport(), dock)); code != 200 || b["enforcement"] != "quarantined" {
-		t.Fatalf("quarantine first: %d %v", code, b)
+	// Unplugged: the first laptop's next report no longer lists it, and
+	// the row goes; the second laptop's claim lands on nothing.
+	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean())); code != 200 {
+		t.Fatal("first report without the dock")
 	}
-	// The dock is plugged into the second laptop, which reports clean.
-	if code, b := reportAs(t, f, hostA, tenantA, second, withMACs(map[string]any{"passcode_set": true, "disk_encryption": true}, dock)); code != 200 || b["state"] != "compliant" {
-		t.Fatalf("second report: %d %v", code, b)
+	if code, _ := reportAs(t, f, hostA, tenantA, second, withMACs(clean(), dock)); code != 200 {
+		t.Fatal("second report")
 	}
 	rec, body := do(t, f, req(t, "GET", hostA, "/api/network/access/mac/"+dock, token))
-	if rec.Code != 200 || body["access"] != "allow" {
-		t.Fatalf("the dock's address still answers for the quarantined laptop: %d %v", rec.Code, body)
+	if rec.Code != 200 || body["access"] != "allow" || body["serial"] == "C02XK4YTQ6NV" {
+		t.Fatalf("the dock's address does not answer for the second laptop: %d %v", rec.Code, body)
+	}
+	// A holder that has gone quiet for longer than the engine tolerates
+	// has let go: the first laptop claims the dock while the second is
+	// stale, and gets it.
+	exec(t, `UPDATE devices SET last_report_at = now() - interval '10 days' WHERE id = $1`, second)
+	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean(), dock)); code != 200 {
+		t.Fatal("first claims it back")
 	}
 	if n := adminCount(t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action = 'device.mac_moved'`, tenantA); n != 1 {
-		t.Fatalf("%d move audit rows", n)
+		t.Fatalf("%d move audit rows, want 1 (the stale holder's)", n)
+	}
+	rec, body = do(t, f, req(t, "GET", hostA, "/api/network/access/mac/"+dock, token))
+	if rec.Code != 200 || body["serial"] != "C02XK4YTQ6NV" {
+		t.Fatalf("after the stale holder let go: %d %v", rec.Code, body)
+	}
+	// A retired holder has let go too: the first laptop is retired and the
+	// second, reporting again, takes the dock.
+	exec(t, `UPDATE devices SET state = 'retired' WHERE id = $1`, first)
+	if code, _ := reportAs(t, f, hostA, tenantA, second, withMACs(clean(), dock)); code != 200 {
+		t.Fatal("second takes it from the retired holder")
+	}
+	if n := adminCount(t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action = 'device.mac_moved'`, tenantA); n != 2 {
+		t.Fatalf("%d move audit rows, want 2", n)
+	}
+	rec, body = do(t, f, req(t, "GET", hostA, "/api/network/access/mac/"+dock, token))
+	if rec.Code != 200 || body["serial"] == "C02XK4YTQ6NV" {
+		t.Fatalf("after the retired holder let go: %d %v", rec.Code, body)
+	}
+}
+
+// A device's own report cannot take an address a reporting device holds,
+// and never one a quarantined device holds: otherwise a quarantined laptop
+// could report a clean one's address, or a clean-reporting agent could
+// claim the quarantined one's, and the door would answer for the wrong
+// machine. The claim is written down instead.
+func TestAReportCannotTakeAnAddressAnotherDeviceHolds(t *testing.T) {
+	f := newFixture(t)
+	quarantiningBaseline(t, f)
+	first, second := f.devices[tenantA][0], f.devices[tenantA][1]
+	token, _ := mintToken(t, f, "a-super", "NAC")
+	const mac = "3c:22:fb:aa:bb:01"
+	clean := func() map[string]any { return map[string]any{"passcode_set": true, "disk_encryption": true} }
+
+	// The second laptop is quarantined holding the address. The first,
+	// clean, claims it: refused, and the door still says deny for it.
+	if code, b := reportAs(t, f, hostA, tenantA, second, withMACs(failingReport(), mac)); code != 200 || b["enforcement"] != "quarantined" {
+		t.Fatalf("quarantine: %d %v", code, b)
+	}
+	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean(), mac)); code != 200 {
+		t.Fatal("claim")
+	}
+	rec, body := do(t, f, req(t, "GET", hostA, "/api/network/access/mac/"+mac, token))
+	if rec.Code != 200 || body["access"] != "deny" || body["state"] != "quarantined" {
+		t.Fatalf("a clean report took a quarantined device's address: %d %v", rec.Code, body)
+	}
+	if n := adminCount(t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action = 'device.mac_contested'`, tenantA); n != 1 {
+		t.Fatalf("%d contested audit rows", n)
+	}
+	// And the other way: a reporting, clean holder keeps its address from
+	// any other device's report.
+	const other = "ac:de:48:00:11:22"
+	if code, _ := reportAs(t, f, hostA, tenantA, first, withMACs(clean(), other)); code != 200 {
+		t.Fatal("first holds another")
+	}
+	if code, _ := reportAs(t, f, hostA, tenantA, second, withMACs(failingReport(), mac, other)); code != 200 {
+		t.Fatal("second claims it")
+	}
+	rec, body = do(t, f, req(t, "GET", hostA, "/api/network/access/mac/"+other, token))
+	if rec.Code != 200 || body["access"] != "allow" {
+		t.Fatalf("a report took a reporting device's address: %d %v", rec.Code, body)
 	}
 }
 

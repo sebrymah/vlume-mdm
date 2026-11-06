@@ -34,6 +34,11 @@ func TestTheComplianceReportListsEveryDeviceWithItsVerdict(t *testing.T) {
 		t.Fatalf("report 2: %d %v", code, b)
 	}
 
+	// Who holds it and what the network knows it by travel with the row.
+	assign(t, devs[0], "kemi@kalesi.example")
+	if code, _ := reportAs(t, f, hostA, tenantA, devs[0], withMACs(map[string]any{"passcode_set": true, "passcode_length": 12, "disk_encryption": true}, "3c:22:fb:aa:bb:01")); code != 200 {
+		t.Fatal("report with mac")
+	}
 	rec := raw(t, f, req(t, "GET", hostA, "/api/reports/compliance?format=csv", "a-auditor"))
 	if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") {
 		t.Fatalf("csv: %d %s", rec.Code, rec.Header().Get("Content-Type"))
@@ -55,6 +60,18 @@ func TestTheComplianceReportListsEveryDeviceWithItsVerdict(t *testing.T) {
 	}
 	if !strings.Contains(findings["HQ-WIN-004"], "a passcode must be set") || !strings.Contains(findings["HQ-WIN-004"], "Baseline v1") {
 		t.Fatalf("the failing row does not say what is wrong and who asked: %q", findings["HQ-WIN-004"])
+	}
+	if rows[0][9] != "held_by" || rows[0][10] != "mac_addresses" {
+		t.Fatalf("csv columns: %v", rows[0])
+	}
+	for _, r := range rows[1:] {
+		if r[0] == "HQ-MBP-001" && (r[9] != "kemi@kalesi.example" || r[10] != "3c:22:fb:aa:bb:01") {
+			t.Fatalf("the held-by and mac columns: %q %q", r[9], r[10])
+		}
+	}
+	pdf := raw(t, f, req(t, "GET", hostA, "/reports/compliance.pdf", "a-auditor"))
+	if pdf.Code != 200 || !strings.Contains(pdf.Body.String(), "held by kemi@kalesi.example  MAC 3c:22:fb:aa:bb:01") {
+		t.Fatalf("the PDF does not say who holds the device and its address (%d)", pdf.Code)
 	}
 	// Only this tenant's devices. Tenant B has three.
 	if n := adminCount(t, `SELECT count(*) FROM devices WHERE tenant_id = $1`, tenantB); n != 3 || len(rows)-1 != 2 {

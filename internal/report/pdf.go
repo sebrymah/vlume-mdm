@@ -174,6 +174,21 @@ func layout(r Report) []line {
 		}
 		add(pad(clip(row.Name, maxNameChars), 28)+pad(clip(row.Serial, maxSerialChar), 18)+
 			pad(row.OSFamily, 10)+pad(Words(row.Verdict), 16)+reported, fontBody, false, 0)
+		// Who holds it and what the network knows it by, on a line of
+		// their own under the row, only when there is something to say.
+		if row.HeldBy != "" || len(row.MACs) > 0 {
+			detail := ""
+			if row.HeldBy != "" {
+				detail = "held by " + clip(row.HeldBy, 40)
+			}
+			if len(row.MACs) > 0 {
+				if detail != "" {
+					detail += "  "
+				}
+				detail += "MAC " + strings.Join(row.MACs, ", ")
+			}
+			add(detail, fontBody, false, 12)
+		}
 	}
 	var trouble []Row
 	for _, row := range r.Rows {

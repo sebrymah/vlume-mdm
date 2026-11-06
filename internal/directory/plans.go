@@ -223,3 +223,52 @@ func (d *Directory) UsageHistory(ctx context.Context, id uuid.UUID, days int) ([
 	}
 	return out, rows.Err()
 }
+
+// BillingRow is one tenant's month, from the daily snapshots: what a
+// billing system is handed (T9). Device-days is the sum of the daily
+// active-device counts, which is what a per-device-per-day price is
+// applied to; the peak is what a per-seat or per-tier price is applied to.
+type BillingRow struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	Plan        string    `json:"plan"`
+	Days        int       `json:"days"`
+	DeviceDays  int       `json:"device_days"`
+	PeakDevices int       `json:"peak_devices"`
+	PeakStorage int64     `json:"peak_storage_bytes"`
+	Commands    int       `json:"commands_30d_at_end"`
+	Enrolled    int       `json:"enrolled_30d_at_end"`
+}
+
+// Billing aggregates every tenant's snapshots from the first day (inclusive)
+// to the last (exclusive). The plan is the one on the last snapshot in the
+// range, so a tenant that changed plan mid-month is billed on the plan it
+// ended on; the days say how much of the month there was data for.
+func (d *Directory) Billing(ctx context.Context, from, to time.Time) ([]BillingRow, error) {
+	rows, err := d.pool.Query(ctx, `
+		SELECT t.id, t.slug, t.name,
+		       (SELECT plan FROM usage_snapshots l WHERE l.tenant_id = t.id AND l.taken_on >= $1 AND l.taken_on < $2 ORDER BY taken_on DESC LIMIT 1),
+		       count(*), coalesce(sum(s.active_devices), 0), coalesce(max(s.active_devices), 0),
+		       coalesce(max(s.storage_bytes), 0),
+		       (SELECT commands_30d FROM usage_snapshots l WHERE l.tenant_id = t.id AND l.taken_on >= $1 AND l.taken_on < $2 ORDER BY taken_on DESC LIMIT 1),
+		       (SELECT enrolled_30d FROM usage_snapshots l WHERE l.tenant_id = t.id AND l.taken_on >= $1 AND l.taken_on < $2 ORDER BY taken_on DESC LIMIT 1)
+		  FROM tenants t JOIN usage_snapshots s ON s.tenant_id = t.id
+		 WHERE s.taken_on >= $1 AND s.taken_on < $2
+		 GROUP BY t.id, t.slug, t.name
+		 ORDER BY t.slug`, from.UTC().Format("2006-01-02"), to.UTC().Format("2006-01-02"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BillingRow{}
+	for rows.Next() {
+		var r BillingRow
+		if err := rows.Scan(&r.TenantID, &r.Slug, &r.Name, &r.Plan, &r.Days, &r.DeviceDays, &r.PeakDevices,
+			&r.PeakStorage, &r.Commands, &r.Enrolled); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

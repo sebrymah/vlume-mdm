@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -172,5 +173,19 @@ func TestConsoleListsOnlyTheTenantsOwnDevices(t *testing.T) {
 	_, b := getHTML(t, f, hostB, "/devices", "b-itadmin")
 	if n := strings.Count(b, `href="/devices/`); n != 3 {
 		t.Fatalf("tenant B's device list has %d rows, want 3", n)
+	}
+}
+
+// A form's "return" field is a path on this site or nothing: a
+// protocol-relative address would send the person off the site with a
+// message in the query string.
+func TestAFormCannotReturnTheBrowserOffTheSite(t *testing.T) {
+	f := newFixture(t)
+	for _, bad := range []string{"//evil.example/x", "/\\evil.example", "https://evil.example", "/ok\r\nLocation: x"} {
+		rec := postForm(t, f, "a-itadmin", "/people/offboard", url.Values{"return": {bad}})
+		loc := rec.Header().Get("Location")
+		if rec.Code != http.StatusSeeOther || !strings.HasPrefix(loc, "/devices?") && !strings.HasPrefix(loc, "/people") {
+			t.Fatalf("return %q sent the browser to %q (%d)", bad, loc, rec.Code)
+		}
 	}
 }

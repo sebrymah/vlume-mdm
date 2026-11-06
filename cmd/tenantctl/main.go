@@ -27,12 +27,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -49,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 	if len(os.Args) < 2 {
-		fail("usage: tenantctl create|list|suspend|resume|add-host|signups|cancel-signup|usage|snapshot|set-plan|set-quota|feature|export-mode|offboard|residue|reseal-master|move-key|import ...")
+		fail("usage: tenantctl create|list|suspend|resume|add-host|signups|cancel-signup|usage|billing|snapshot|set-plan|set-quota|feature|export-mode|offboard|residue|reseal-master|move-key|import ...")
 	}
 	cmd, args := os.Args[1], os.Args[2:]
 	ctx := context.Background()
@@ -226,6 +229,43 @@ Then a member of %q signs in and finishes setup from the console.
 			}
 		}
 		_ = w.Flush()
+
+	case "billing":
+		// T9: the month as a billing system takes it, one row per tenant,
+		// from the daily snapshots. CSV by default, JSON on request.
+		fs := flag.NewFlagSet("billing", flag.ExitOnError)
+		month := fs.String("month", time.Now().UTC().Format("2006-01"), "the month, YYYY-MM")
+		format := fs.String("format", "csv", "csv or json")
+		_ = fs.Parse(args)
+		from, err := time.Parse("2006-01", *month)
+		if err != nil {
+			fail("--month is YYYY-MM")
+		}
+		rowsOut, err := dir.Billing(ctx, from, from.AddDate(0, 1, 0))
+		if err != nil {
+			fail("%v", err)
+		}
+		switch *format {
+		case "json":
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(map[string]any{"month": *month, "tenants": rowsOut}); err != nil {
+				fail("%v", err)
+			}
+		case "csv":
+			cw := csv.NewWriter(os.Stdout)
+			_ = cw.Write([]string{"month", "tenant_id", "slug", "name", "plan", "days", "device_days", "peak_devices", "peak_storage_bytes", "commands_30d_at_end", "enrolled_30d_at_end"})
+			for _, r := range rowsOut {
+				_ = cw.Write([]string{*month, r.TenantID.String(), r.Slug, r.Name, r.Plan, strconv.Itoa(r.Days), strconv.Itoa(r.DeviceDays),
+					strconv.Itoa(r.PeakDevices), strconv.FormatInt(r.PeakStorage, 10), strconv.Itoa(r.Commands), strconv.Itoa(r.Enrolled)})
+			}
+			cw.Flush()
+			if err := cw.Error(); err != nil {
+				fail("%v", err)
+			}
+		default:
+			fail("--format is csv or json")
+		}
 
 	case "snapshot":
 		n, err := dir.RecordUsage(ctx, time.Now())

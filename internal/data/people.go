@@ -285,3 +285,27 @@ func RecordLeaver(ctx context.Context, tx *Tx, typed, by, reason string, now tim
 func DevicesOfPerson(ctx context.Context, tx *Tx, id uuid.UUID) ([]Device, error) {
 	return devicesWhere(ctx, tx, `person_id = $1 AND state <> 'retired'`, id)
 }
+
+// PeopleLabels is every person by id as they are shown, for a report
+// that names who holds each device without a query per row.
+func PeopleLabels(ctx context.Context, tx *Tx) (map[uuid.UUID]string, error) {
+	rows, err := tx.Query(ctx, `SELECT id, subject, email, name, left_at IS NOT NULL FROM people`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]string{}
+	for rows.Next() {
+		var p Person
+		var left bool
+		if err := rows.Scan(&p.ID, &p.Subject, &p.Email, &p.Name, &left); err != nil {
+			return nil, err
+		}
+		label := p.Label()
+		if left {
+			label += " (left)"
+		}
+		out[p.ID] = label
+	}
+	return out, rows.Err()
+}

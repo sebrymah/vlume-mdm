@@ -47,11 +47,20 @@ func NormaliseMAC(s string) (string, bool) {
 }
 
 // ReplaceMACs records what a device reported, in place of what it
-// reported before. An address another device of this tenant held moves to
-// this one, with an audit line, because the latest report is the truth
-// about where the interface is; the common case is a docking station or a
-// USB adapter that is plugged into a different laptop.
-func ReplaceMACs(ctx context.Context, tx *Tx, deviceID uuid.UUID, macs []string, now time.Time) error {
+// reported before.
+//
+// An address another device of this tenant holds is NOT simply taken: a
+// report is the device's own word, and a word that could move a clean
+// laptop's address onto a quarantined one would let the quarantined one
+// borrow the clean one's answer at the door. The address moves only when
+// its holder has let go of it: the holder is retired, or has not reported
+// within maxAge (the engine's own limit), and never from a device in
+// quarantine. A holder that is reporting and still lists the address keeps
+// it, and the claim is written down (device.mac_contested) for a person to
+// look at. The common honest case, a dock moved between laptops, needs no
+// contest: the first laptop's next report no longer lists the dock, the
+// row goes, and the second laptop's claim lands on nothing.
+func ReplaceMACs(ctx context.Context, tx *Tx, deviceID uuid.UUID, macs []string, now time.Time, maxAge time.Duration) error {
 	keep := make([]string, 0, len(macs))
 	seen := map[string]bool{}
 	for _, m := range macs {
@@ -73,13 +82,26 @@ func ReplaceMACs(ctx context.Context, tx *Tx, deviceID uuid.UUID, macs []string,
 	}
 	for _, mac := range keep {
 		var previous *uuid.UUID
+		var holderState string
+		var holderLast *time.Time
 		err := tx.QueryRow(ctx, `
-			SELECT device_id FROM device_macs WHERE mac = $1 AND device_id <> $2`,
-			mac, deviceID).Scan(&previous)
+			SELECT m.device_id, d.state, d.last_report_at
+			  FROM device_macs m JOIN devices d ON d.id = m.device_id
+			 WHERE m.mac = $1 AND m.device_id <> $2`,
+			mac, deviceID).Scan(&previous, &holderState, &holderLast)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		if previous != nil {
+			letGo := holderState == "retired" ||
+				(holderState != "quarantined" && (holderLast == nil || now.Sub(*holderLast) > maxAge))
+			if !letGo {
+				if err := AppendAudit(ctx, tx, "device.mac_contested",
+					"mac:"+mac+" held_by:"+previous.String()+" claimed_by:"+deviceID.String()); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := AppendAudit(ctx, tx, "device.mac_moved",
 				"mac:"+mac+" from:"+previous.String()+" to:"+deviceID.String()); err != nil {
 				return err
@@ -134,4 +156,23 @@ func DeviceByMAC(ctx context.Context, tx *Tx, mac string) (uuid.UUID, bool, erro
 		return uuid.Nil, false, err
 	}
 	return id, true, nil
+}
+
+// MACsByDevice is every device's addresses in one read, for the report.
+func MACsByDevice(ctx context.Context, tx *Tx) (map[uuid.UUID][]string, error) {
+	rows, err := tx.Query(ctx, `SELECT device_id, mac FROM device_macs ORDER BY device_id, mac`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID][]string{}
+	for rows.Next() {
+		var id uuid.UUID
+		var mac string
+		if err := rows.Scan(&id, &mac); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], mac)
+	}
+	return out, rows.Err()
 }

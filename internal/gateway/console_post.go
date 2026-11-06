@@ -55,8 +55,11 @@ func (g *Gateway) formPost(action authz.Action,
 // back sends the person where they came from with something to read. A form
 // that silently returns to an unchanged page teaches people to press it twice.
 func back(w http.ResponseWriter, r *http.Request, fallback, msg string) {
-	to := r.FormValue("return")
-	if to == "" || to[0] != '/' {
+	// The same rule as the sign-in's "where was I going": a plain path
+	// on this site, or the fallback. A protocol-relative //host, or a
+	// backslash a browser would read as one, would leave the site.
+	to := localPath(r.FormValue("return"))
+	if to == "" {
 		to = fallback
 	}
 	http.Redirect(w, r, to+"?said="+url.QueryEscape(msg), http.StatusSeeOther)

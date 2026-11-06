@@ -35,7 +35,11 @@ type Row struct {
 	OSFamily   string
 	Ownership  string
 	AssignedTo string
-	State      string
+	// HeldBy is the person the device is assigned to, as the platform
+	// knows them (0040), and MACs the addresses it reported (0039).
+	HeldBy string
+	MACs   []string
+	State  string
 	// Verdict is the engine's view at read time, stale re-checked, which
 	// can differ from the device's stored state for a device that has
 	// gone quiet since it was judged.
@@ -59,11 +63,25 @@ func Compliance(ctx context.Context, tx *data.Tx, now time.Time) (Report, error)
 	if err != nil {
 		return Report{}, err
 	}
+	people, err := data.PeopleLabels(ctx, tx)
+	if err != nil {
+		return Report{}, err
+	}
+	macs, err := data.MACsByDevice(ctx, tx)
+	if err != nil {
+		return Report{}, err
+	}
 	rep := Report{GeneratedAt: now}
 	for _, d := range devices {
 		row := Row{
 			DeviceID: d.ID, Name: d.Name, Serial: d.Serial, OSFamily: d.OSFamily,
 			Ownership: d.Ownership, AssignedTo: d.AssignedTo, State: d.State,
+			HeldBy: d.AssignedTo, MACs: macs[d.ID],
+		}
+		if d.PersonID != nil {
+			if label, ok := people[*d.PersonID]; ok {
+				row.HeldBy = label
+			}
 		}
 		c, found, err := policy.Of(ctx, tx, d.ID, now)
 		if err != nil {
@@ -118,7 +136,7 @@ func (r Report) Summary() string {
 func CSV(w io.Writer, r Report) error {
 	cw := csv.NewWriter(w)
 	if err := cw.Write([]string{"device", "serial", "os", "ownership", "assigned_to",
-		"verdict", "last_reported", "findings", "policies"}); err != nil {
+		"verdict", "last_reported", "findings", "policies", "held_by", "mac_addresses"}); err != nil {
 		return err
 	}
 	for _, row := range r.Rows {
@@ -127,7 +145,8 @@ func CSV(w io.Writer, r Report) error {
 			reported = row.ReportedAt.UTC().Format(time.RFC3339)
 		}
 		if err := cw.Write([]string{row.Name, row.Serial, row.OSFamily, row.Ownership, row.AssignedTo,
-			row.Verdict, reported, findingsText(row.Findings, "; "), strings.Join(row.Policies, "; ")}); err != nil {
+			row.Verdict, reported, findingsText(row.Findings, "; "), strings.Join(row.Policies, "; "),
+			row.HeldBy, strings.Join(row.MACs, " ")}); err != nil {
 			return err
 		}
 	}

@@ -880,12 +880,20 @@ VPN's virtual adapters carry addresses no switch will see), the platform
 keeps them per device, and the door answers by any of them, written any of
 the ways equipment writes a MAC (`3c:22:fb:aa:bb:01`, `3C-22-FB-AA-BB-01`,
 `3c22.fbaa.bb01`, bare digits). One address belongs to one device per
-tenant; an address a second device reports moves to it with an audit line,
-because the latest report is the truth about where that dock or adapter is
-plugged in, and `--break-macmove` leaves it behind and the test sees a
-quarantined laptop's dock keep a clean one off the network. An address the
-device stops reporting is forgotten. `--break-macnormalise` matches the
-address only as written and the Cisco form stops answering.
+tenant, and a report does not simply take one another device holds: a
+report is the device's own word, and a word that could move a clean
+laptop's address onto a quarantined one would let the quarantined one
+borrow the clean one's answer at the door. The address moves only when its
+holder has let go of it, which is retired, or quiet for longer than the
+engine tolerates, and never from a device in quarantine; a holder that is
+reporting keeps it and the claim is written down (`device.mac_contested`).
+The honest case, a dock moved between laptops, needs no contest: the first
+laptop's next report no longer lists the dock, the row goes, and the second
+laptop's claim lands on nothing. `--break-macmove` leaves an address with a
+holder that has let go, and the test sees the second laptop answered for by
+the first. `--break-macnormalise` matches the address only as written and
+the Cisco form stops answering. The compliance report (CSV and PDF) names
+who holds each device and its addresses.
 
 **Cisco ISE** is answered in the shape of its MDM API version 2
 (`internal/gateway/ise.go`): ISE is given this platform's hostname and an
@@ -2173,7 +2181,12 @@ both say so. `tenantctl usage` prints it; a sweep takes one snapshot per
 tenant per day into `usage_snapshots` for billing history, which the
 application role cannot read (a tenant's console has no business seeing the
 operator's billing table, including its own); `tenantctl usage <slug>
---history 30` shows it.
+--history 30` shows it, and `tenantctl billing --month 2026-10 [--format
+json]` hands a billing system the month: one row per tenant with the days
+that had a snapshot, device-days (the sum of the daily active counts, what
+a per-device-per-day price applies to), the peak device count and peak
+storage, and the plan the month ended on. A month with no snapshots is an
+empty export, not an error.
 
 ## SIEM export
 

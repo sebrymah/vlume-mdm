@@ -602,7 +602,7 @@ func ApplyAt(ctx context.Context, tx *data.Tx, deviceID uuid.UUID,
 		}
 	}
 	if rep.MACAddresses != nil {
-		if err := data.ReplaceMACs(ctx, tx, deviceID, rep.MACAddresses, now); err != nil {
+		if err := data.ReplaceMACs(ctx, tx, deviceID, rep.MACAddresses, now, MaxReportAge); err != nil {
 			return Compliance{}, err
 		}
 	}

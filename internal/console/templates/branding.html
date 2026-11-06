@@ -1,0 +1,104 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "said" .}}
+  <h1>Branding</h1>
+  <p class="sub">What your staff see. This console carries no name of its
+  own: the name, colour and footer here are the only ones anybody is shown,
+  on every page, in every email, and in the certificate on every device.</p>
+
+  {{if .Brand.IsPlaceholder}}
+  <div class="warnbar">
+    <p><strong>Still the placeholder.</strong> Until this is replaced, staff see a
+    product called {{.Brand.ProductName}}.</p>
+  </div>
+  {{end}}
+
+  <p class="sub" style="margin-bottom:14px">Every email your staff get wears this brand too:
+  <a href="/branding/email" target="_blank">see what one looks like</a>.</p>
+
+  <form method="post" action="/branding" class="card">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/branding">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Product name</span>
+        <input name="product_name" required value="{{if not .Brand.IsPlaceholder}}{{.Brand.ProductName}}{{end}}"
+               placeholder="Kalesi Device Care"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Mark letter</span>
+        <input name="mark_letter" maxlength="1" value="{{if not .Brand.IsPlaceholder}}{{.Brand.MarkLetter}}{{end}}"
+               placeholder="K"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Colour</span>
+        <input name="colour" value="{{.Brand.Colour}}" placeholder="#0F6E66"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace">
+      </label>
+      <div style="display:flex;align-items:flex-end;padding-bottom:4px">
+        <span class="sub" style="font-size:12px">
+          White text on it reads at {{printf "%.1f" .Contrast}}:1. A colour below
+          4.5:1 is refused rather than rendered unreadable; that is WCAG 2.1 AA,
+          and it is not something a tenant can switch off by choosing badly.
+        </span>
+      </div>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Lost-device phone number</span>
+        <input name="lost_phone" value="{{.Brand.LostPhone}}" placeholder="+234 800 000 0000"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Lost-device email</span>
+        <input name="lost_email" value="{{.Brand.LostEmail}}" placeholder="itdesk@kalesi.example"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <p class="sub" style="grid-column:1/-1;margin:0;font-size:12px">Shown on the lock screen of a device
+      in Lost Mode, and nowhere else, so whoever finds it knows who to call.</p>
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Legal footer</span>
+        <input name="legal_footer" value="{{.Brand.LegalFooter}}"
+               placeholder="Kalesi Foods Ltd · RC 1184420 · Lagos"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+    </div>
+    <button type="submit" style="margin-top:12px;padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save</button>
+  </form>
+
+  <h2 style="margin-top:24px">Logo and favicon</h2>
+  <p class="sub">The logo replaces the letter mark in the header, on every page and on
+  the compliance report. The favicon is the browser tab. PNG, JPEG, GIF or SVG for
+  the logo (up to 200 KB); PNG or ICO for the favicon (up to 64 KB).</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <form method="post" action="/branding/image" enctype="multipart/form-data" class="card">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="return" value="/branding">
+      <input type="hidden" name="kind" value="logo">
+      <p class="k">Logo</p>
+      {{if .Brand.HasLogo}}<p><img src="/brand/logo" alt="current logo" style="max-height:48px;max-width:200px"></p>{{end}}
+      <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/svg+xml" style="font:inherit;font-size:12px">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:0;background:var(--brand);color:#fff;cursor:pointer">Upload</button>
+        {{if .Brand.HasLogo}}<button type="submit" name="remove" value="1" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Remove</button>{{end}}
+      </div>
+    </form>
+    <form method="post" action="/branding/image" enctype="multipart/form-data" class="card">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="return" value="/branding">
+      <input type="hidden" name="kind" value="favicon">
+      <p class="k">Favicon</p>
+      {{if .Brand.HasFavicon}}<p><img src="/brand/favicon.ico" alt="current favicon" style="height:32px;width:32px"></p>{{end}}
+      <input type="file" name="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon" style="font:inherit;font-size:12px">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:0;background:var(--brand);color:#fff;cursor:pointer">Upload</button>
+        {{if .Brand.HasFavicon}}<button type="submit" name="remove" value="1" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Remove</button>{{end}}
+      </div>
+    </form>
+  </div>
+</main>
+</div>
+{{template "foot" .}}

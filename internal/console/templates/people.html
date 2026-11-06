@@ -1,0 +1,42 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>People</h1>
+  <p class="sub">Everyone this platform has met: people who have signed in, people a device
+  was assigned to, and people HR has said have left. Not a directory; your people live at
+  your identity provider.</p>
+  <form method="get" action="/people" class="card" style="display:flex;gap:10px;align-items:flex-end">
+    <label style="flex:1">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Name, address or subject</span>
+      <input name="q" value="{{.PeopleQuery}}" placeholder="kemi"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Search</button>
+  </form>
+  {{if .People}}
+  <div class="scroll" style="margin-top:12px">
+  <table>
+    <thead><tr><th>Person</th><th>Address</th><th>Devices</th><th>Seen</th><th>Status</th></tr></thead>
+    <tbody>
+    {{range .People}}
+      <tr{{if .Left}} style="opacity:.6"{{end}}>
+        <td><a href="/people/{{.ID}}">{{.Label}}</a></td>
+        <td>{{if .Email}}{{.Email}}{{else}}<span class="sub" style="font-size:11px">{{.Subject}}</span>{{end}}</td>
+        <td>{{.Devices}}</td>
+        <td>{{.LastSeen.Format "2 Jan 2006"}}</td>
+        <td>{{if .Left}}<span class="pill">left {{.LeftAt.Format "2 Jan 2006"}}</span>{{else if eq .Source "assignment"}}<span class="sub" style="font-size:11px">not signed in yet</span>{{else}}active{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="sub" style="margin-top:12px">Nobody yet. A person appears here when they sign in, or when a device is assigned to them.</p>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

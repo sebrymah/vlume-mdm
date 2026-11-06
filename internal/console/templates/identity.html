@@ -1,0 +1,302 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "said" .}}
+  <h1>Sign-in</h1>
+  <p class="sub">Your people sign in with your own identity provider. This
+  console never holds a password. What you decide here is which of your
+  groups become which role.</p>
+
+  <h2>Who gets which role</h2>
+  <p class="sub">A person in several mapped groups gets the highest. A person
+  in none cannot sign in, which is deliberate: there is no default role,
+  because a default is a silent grant to everybody with an account.</p>
+
+  {{if .Identity.Roles}}
+  <div class="scroll" style="margin-bottom:14px">
+    <table>
+      <thead><tr><th>Group at your identity provider</th><th>Role here</th><th></th></tr></thead>
+      <tbody>
+      {{range .Identity.Roles}}
+        <tr>
+          <td><code>{{.ClaimValue}}</code></td>
+          <td>{{.Role}}</td>
+          <td style="text-align:right">
+            <form method="post" action="/identity/roles/remove" style="margin:0">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/identity">
+              <input type="hidden" name="claim_value" value="{{.ClaimValue}}">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+
+  <form method="post" action="/identity/roles" class="card" style="margin-bottom:26px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/identity">
+    <p class="k">Map a group</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:2 1 220px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Group, exactly as your provider sends it</span>
+        <input name="claim_value" required placeholder="IT-Operations"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 160px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Becomes</span>
+        <select name="role" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{range .Identity.RoleChoices}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Map it</button>
+    </div>
+    <p class="sub" style="margin:10px 0 0;font-size:12px">
+      Group names are matched exactly, including case. A change applies from
+      each person&rsquo;s next sign-in, not to sessions already open.
+    </p>
+  </form>
+
+  <h2>Administrator seats</h2>
+  <p class="sub"><strong>{{.Identity.SeatsUsed}} of {{.Identity.SeatCap}}</strong> in use. A seat is a
+  person with an administrative role who has signed in within the last 30 days; a seat
+  not used for 30 days frees itself. Employees never take a seat. When every seat is
+  taken, the next administrator to sign in is told so and turned away until one is
+  released here or the plan grows.</p>
+  {{if .Identity.Seats}}
+  <div class="scroll" style="margin-bottom:26px">
+    <table>
+      <thead><tr><th>Who</th><th>Role</th><th>Last signed in</th><th></th></tr></thead>
+      <tbody>
+      {{range .Identity.Seats}}
+        <tr>
+          <td>{{if .Name}}{{.Name}}{{else}}{{.Subject}}{{end}}{{if .Email}} <span class="sub">{{.Email}}</span>{{end}}</td>
+          <td>{{.Role}}</td>
+          <td>{{.LastSeenAt.Format "2 Jan 2006 15:04"}}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <form method="post" action="/identity/seats/signout" style="margin:0;display:inline">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/identity">
+              <input type="hidden" name="subject" value="{{.Subject}}">
+              <button type="submit" title="Ends every session this person has, now; they keep their seat and can sign in again" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Sign out</button>
+            </form>
+            <form method="post" action="/identity/seats/release" style="margin:0;display:inline">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/identity">
+              <input type="hidden" name="subject" value="{{.Subject}}">
+              <button type="submit" title="Frees the seat and ends their sessions" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Release</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="sub" style="margin-bottom:26px">Nobody with an administrative role has signed in yet.</p>
+  {{end}}
+
+  <h2>The provider</h2>
+  {{if .Identity.Configured}}
+  <p class="sub">Connected. Change these only if your provider has changed; a
+  wrong value here locks everyone out until it is corrected by someone who
+  can still get in.</p>
+  {{else}}
+  <p class="sub">Not connected. Nobody can sign in until this is filled in.</p>
+  {{end}}
+
+  {{if eq .Identity.Protocol "saml"}}
+  <form method="post" action="/identity" class="card">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/identity">
+    <input type="hidden" name="protocol" value="saml">
+    <p class="k">SAML 2.0</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Provider's entity id (the assertion's issuer)</span>
+        <input name="issuer" value="{{.Identity.Issuer}}" placeholder="https://sts.windows.net/…/"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Provider's sign-in URL (SSO, HTTP-Redirect)</span>
+        <input name="saml_sso_url" value="{{.Identity.SAMLSSOURL}}" placeholder="https://login.microsoftonline.com/…/saml2"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Provider's logout URL (single logout, HTTP-Redirect; blank for none)</span>
+        <input name="saml_slo_url" value="{{.Identity.SAMLSLOURL}}" placeholder="https://login.microsoftonline.com/…/saml2"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Groups attribute</span>
+        <input name="role_claim" value="{{if .Identity.RoleClaim}}{{.Identity.RoleClaim}}{{else}}groups{{end}}"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">
+          Provider's signing certificate{{if .Identity.HasCertificate}} &mdash; one is held ({{.Identity.CertSubject}}{{if .Identity.CertNotAfter}}, expires {{.Identity.CertNotAfter.Format "2 Jan 2006"}}{{end}}); leave blank to keep it{{end}}
+        </span>
+        <textarea name="saml_certificate" rows="4" placeholder="-----BEGIN CERTIFICATE----- or the bare base64"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:monospace;font-size:12px"></textarea>
+      </label>
+    </div>
+    {{if .Identity.ClientID}}
+    <p class="sub" style="margin:10px 0 0;font-size:12px">Give your provider these, or our
+      <a href="/saml/metadata">metadata</a>: entity id <code>{{.Identity.ClientID}}</code>,
+      reply URL <code>{{.Identity.RedirectURL}}</code>. With a logout URL set, sign-out ends the
+      provider's session too: our logout requests are signed with a key of ours{{if .Identity.HasSigningKey}}, already made;
+      its certificate is in the metadata{{else}}, made the first time it is needed and published in the metadata{{end}}.</p>
+    {{end}}
+    <p class="sub" style="margin:8px 0 12px;font-size:12px">
+      Groups arrive as an attribute. Microsoft Entra's is read under the
+      default name; for another provider, type the attribute name it sends.
+      Users are told apart by the NameID the provider sends, so set it to
+      something that does not change between sign-ins.
+    </p>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save provider</button>
+  </form>
+  <p class="sub" style="margin:8px 0 26px;font-size:12px">Moving to OpenID Connect? <a href="/identity?protocol=oidc">Show the OpenID Connect form</a>.</p>
+  {{else}}
+  <form method="post" action="/identity" class="card">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/identity">
+    <input type="hidden" name="protocol" value="oidc">
+    <p class="k">OpenID Connect</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Issuer</span>
+        <input name="issuer" value="{{.Identity.Issuer}}" placeholder="https://login.microsoftonline.com/…/v2.0"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Client id</span>
+        <input name="client_id" value="{{.Identity.ClientID}}"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Groups claim</span>
+        <input name="role_claim" value="{{if .Identity.RoleClaim}}{{.Identity.RoleClaim}}{{else}}groups{{end}}"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">
+          Client secret{{if .Identity.HasSecret}} &mdash; one is held; leave blank to keep it{{end}}
+        </span>
+        <input name="client_secret" type="password" autocomplete="off"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+    </div>
+    {{if .Identity.RedirectURL}}
+    <p class="sub" style="margin:10px 0 0;font-size:12px">Registered redirect URL:
+      <code>{{.Identity.RedirectURL}}</code>. Your provider must allow it.</p>
+    {{end}}
+    <p class="sub" style="margin:8px 0 12px;font-size:12px">
+      Microsoft Entra sends groups only once group claims are switched on for
+      the application registration. Google Workspace does not send groups at
+      all; map a custom claim instead.
+    </p>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save provider</button>
+  </form>
+  <p class="sub" style="margin:8px 0 26px;font-size:12px">Your provider speaks SAML 2.0 rather than OpenID Connect (an older ADFS, a Shibboleth)? <a href="/identity?protocol=saml">Show the SAML form</a>.</p>
+  {{end}}
+
+  <h2 style="margin-top:28px">This tenant's key</h2>
+  <p class="sub">Everything this tenant seals (the sign-in secret, notification
+  endpoints, the mail-signing key, the device-signing key) is sealed under a key
+  that is this tenant's alone. Rotating it makes a new one and re-seals those
+  values; no other tenant is touched.
+  {{if .Identity.KeyVersion}}Current: version {{.Identity.KeyVersion}}{{if .Identity.KeyCreatedAt}}, since {{.Identity.KeyCreatedAt.Format "2 Jan 2006"}}{{end}}.{{else}}Not yet made: it is made the first time something is sealed.{{end}}</p>
+  <form method="post" action="/identity/keys/rotate" style="margin:0 0 4px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/identity">
+    <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Rotate the key</button>
+  </form>
+
+  <h2 style="margin-top:28px">Export everything</h2>
+  <p class="sub">Every record this tenant has, as one zip of JSON lines per table,
+  for leaving or for keeping. Sealed secrets, token hashes and one-time codes are
+  not in it. Making one is recorded in the audit log.</p>
+  <p><a href="/export" style="display:inline-block;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-weight:600">Download the export</a></p>
+
+  <h2 style="margin-top:28px">Move to another region</h2>
+  <p class="sub">A move bundle carries everything, sealed values included, for
+  the region you are moving to. The key below comes from that region's operator;
+  it never leaves this page and is not kept. Making a bundle is recorded in the
+  audit log. After the import there, this tenant is offboarded here.</p>
+  <form method="post" action="/export/move" class="card" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label style="flex:1 1 320px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Transport key from the destination</span>
+      <input name="transport_key" required autocomplete="off" placeholder="base64, 44 characters"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace">
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:1px solid var(--line);background:#fff;font:inherit;font-weight:600;cursor:pointer">Download the move bundle</button>
+  </form>
+
+  <h2 style="margin-top:28px">Network integrations</h2>
+  <p class="sub">Your Wi-Fi controller, VPN or NAC asks this console whether a
+  device may be let on, with a token you mint here. The answer is allow or
+  deny: deny for a device that is quarantined or retired, and for one that
+  has not reported clean in the last seven days. A token can read that and
+  nothing else. It is shown once.</p>
+
+  {{if .Identity.NewToken}}
+  <div class="card" style="border-color:var(--brand)">
+    <p style="margin:0 0 6px"><strong>{{.Identity.NewTokenName}}</strong> is ready. Copy this now; it will not be shown again.</p>
+    <code style="display:block;font-size:13px;word-break:break-all;padding:8px 10px;background:var(--page);border-radius:6px">{{.Identity.NewToken}}</code>
+    <p class="sub" style="font-size:12px;margin:8px 0 0">Send it as <code>Authorization: Bearer &hellip;</code> to
+      <code>GET /api/network/access/&lt;serial&gt;</code> for one device, or
+      <code>GET /api/network/denied</code> for the block list.</p>
+  </div>
+  {{end}}
+
+  <form method="post" action="/identity/tokens" class="card" style="display:flex;gap:10px;align-items:flex-end">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/identity">
+    <label style="flex:1">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Integration</span>
+      <input name="name" required maxlength="80" placeholder="Head office Wi-Fi controller"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label>
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">May</span>
+      <select name="scope" style="padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+        <option value="network">read the access feed</option>
+        <option value="hr">say a person has left (HR)</option>
+      </select>
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Mint a token</button>
+  </form>
+
+  {{if .Identity.Tokens}}
+  <table style="margin-top:12px">
+    <thead><tr><th>Integration</th><th>Created</th><th>Last asked</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .Identity.Tokens}}
+      <tr{{if not .Live}} style="opacity:.55"{{end}}>
+        <td>{{.Name}} <span class="pill" style="margin-left:4px">{{.Scope}}</span></td>
+        <td>{{.CreatedAt.Format "2 Jan 2006"}} by {{.CreatedBy}}</td>
+        <td>{{if .LastUsedAt}}{{.LastUsedAt.Format "2 Jan 2006 15:04"}}{{else}}<span style="color:var(--muted)">never</span>{{end}}</td>
+        <td>{{if .Live}}live{{else}}revoked {{.RevokedAt.Format "2 Jan 2006"}} by {{.RevokedBy}}{{end}}</td>
+        <td style="text-align:right">
+          {{if .Live}}
+          <form method="post" action="/identity/tokens/{{.ID}}/revoke" style="margin:0">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="return" value="/identity">
+            <button type="submit" style="font:inherit;font-size:12px;padding:4px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Revoke</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

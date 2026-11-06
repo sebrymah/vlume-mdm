@@ -1,0 +1,37 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+<h1>Devices</h1>
+<p class="sub">{{len .Devices}} enrolled</p>
+
+{{template "placeholder" .}}
+
+<div class="scroll">
+<table>
+  <caption class="sub" style="text-align:left;padding:11px 13px 0">Devices in this tenant</caption>
+  <thead><tr>
+    <th scope="col">Device</th><th scope="col">Held by</th><th scope="col">Serial</th>
+    <th scope="col">System</th><th scope="col">Ownership</th><th scope="col">State</th>
+  </tr></thead>
+  <tbody>
+  {{range .Devices}}
+    <tr>
+      <td><a href="/devices/{{.ID}}">{{.Name}}</a>
+          {{if .ReportedLost}} <span class="pill" style="background:#FDE7E5;color:var(--bad)">reported lost</span>{{end}}</td>
+      <td>{{if .AssignedTo}}{{.AssignedTo}}{{else}}<span style="color:var(--muted)">unassigned</span>{{end}}</td>
+      <td><code>{{.Serial}}</code></td>
+      <td>{{.OSFamily}}</td>
+      <td>{{.Ownership}}</td>
+      <td><span class="pill">{{.State}}</span></td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" style="color:var(--muted)">No devices are enrolled yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</main>
+</div>
+{{template "foot" .}}

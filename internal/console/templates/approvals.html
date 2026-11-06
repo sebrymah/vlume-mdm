@@ -1,0 +1,52 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+{{template "said" .}}
+<h1>Approvals</h1>
+<p class="sub">{{len .Commands}} waiting on a decision</p>
+
+{{range .Commands}}
+<div class="panel">
+  <h2>{{.Label}}</h2>
+  <p style="margin:0 0 9px;font-size:12.5px;line-height:1.6;color:var(--muted)">
+    Asked for by <strong style="color:var(--ink)">{{.RequestedBy}}</strong>
+    ({{.RequestedByRole}}) at {{.RequestedAt.Format "2 Jan 15:04"}}.
+  </p>
+  <p style="margin:0 0 12px;font-size:13px;line-height:1.65;background:var(--page);
+            border-radius:7px;padding:11px 13px">{{.Reason}}</p>
+
+  {{if not .Reversible}}
+  <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#9C1F17">
+    This cannot be undone. The device is returned to factory state and the
+    person's own files go with it. Approving queues it immediately and it
+    cannot be recalled.</p>
+  {{end}}
+
+  <form class="act" method="post" action="/commands/{{.ID}}/approve">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="return" value="/approvals">
+    <div>
+      <label for="note-{{.ID}}">Your note, kept in the audit log</label>
+      <input type="text" id="note-{{.ID}}" name="note" placeholder="Anything you checked outside the console">
+    </div>
+    <button type="submit" class="danger">Approve</button>
+  </form>
+  <form class="act" method="post" action="/commands/{{.ID}}/refuse">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="return" value="/approvals">
+    <button type="submit">Refuse</button>
+  </form>
+  <p class="note">You cannot approve a request you made yourself, and two
+  approvals must come from two different roles. Both are refused by the
+  database, not only by this page.</p>
+</div>
+{{else}}
+<div class="panel">
+  <p style="margin:0;font-size:13px;color:var(--muted)">Nothing is waiting.</p>
+</div>
+{{end}}
+</main>
+</div>
+{{template "foot" .}}

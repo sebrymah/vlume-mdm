@@ -1,0 +1,58 @@
+# systemd unit for the device agent.
+#
+# Type=simple with the agent's own loop rather than a timer. A timer would
+# work and would be tidier, but the agent already backs off on failure and a
+# timer firing every fifteen minutes into a broken network produces a
+# restart storm that the backoff exists to avoid.
+
+[Unit]
+Description=Device management agent
+Documentation=https://mdm.kalesi.example/help/agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/mdm-agent \
+    -server https://mdm.kalesi.example \
+    -dir /var/lib/mdm-agent \
+    -every 15m \
+    run
+
+# Root, because locking and wiping are privileged. Everything below narrows
+# what root means here: the agent needs the network, its own state directory
+# and whatever the helpers need, and nothing else.
+User=root
+
+# A clean exit is deliberate (a revoked certificate, say) and is not
+# restarted into a loop. A crash is.
+Restart=on-failure
+RestartSec=60
+
+# Hardening. Each line below removes something the agent has no use for, so
+# a flaw in it reaches less. ProtectSystem=strict makes the whole filesystem
+# read-only except what ReadWritePaths names.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mdm-agent /var/log
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# NOTE: NoNewPrivileges and the restrictions above also apply to the helper
+# scripts the agent runs. A helper that needs something removed here will
+# fail, and the fix is to narrow the exception rather than to delete the
+# hardening.
+
+[Install]
+WantedBy=multi-user.target

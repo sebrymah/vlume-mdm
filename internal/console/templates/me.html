@@ -1,0 +1,106 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "said" .}}
+  <h1>Your devices</h1>
+
+  {{if .Mine}}
+  <p class="sub">What your organisation asks of the devices you use for work,
+  and whether each one is meeting it.</p>
+
+  {{range .Mine}}
+    <div class="card" style="margin-bottom:16px">
+      <p class="k">{{.Device.OSFamily}} · {{if eq .Device.Ownership "personal"}}your own device{{else}}company device{{end}}</p>
+      <p style="margin:0 0 2px;font-size:17px;font-weight:600">{{.Device.Name}}</p>
+
+      {{if .Device.ReportedLost}}
+        <p class="sub" style="margin:8px 0 0;color:var(--bad)">
+          <strong>You reported this lost</strong> on
+          {{.Device.ReportedLostAt.Format "2 Jan 2006 at 15:04"}}.
+          Your IT team can see it. Nothing has been erased.
+        </p>
+      {{end}}
+
+      {{if .Device.Quarantined}}
+        <p class="sub" style="margin:8px 0 0;color:var(--bad)">
+          <strong>This device is quarantined</strong>{{if .Device.QuarantineReason}}:
+          {{.Device.QuarantineReason}}{{end}}. Put right what is listed below, then
+          ask your IT team to release it. Nothing on it has been erased.
+        </p>
+      {{end}}
+
+      {{if .Compliance}}
+        {{if eq .Compliance.State "compliant"}}
+          <p class="sub" style="margin:6px 0 0;color:var(--ok)">
+            Everything asked of this device is in place. Nothing for you to do.
+          </p>
+        {{else if eq .Compliance.State "not_compliant"}}
+          <p class="sub" style="margin:6px 0 10px">
+            There {{if eq (len .Compliance.Findings) 1}}is one thing{{else}}are
+            {{len .Compliance.Findings}} things{{end}} to put right on this device.
+          </p>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>What to do</th><th>How it is set now</th></tr></thead>
+              <tbody>
+              {{range .Compliance.Findings}}
+                <tr><td>{{.Rule}}</td><td>{{.Saw}}</td></tr>
+              {{end}}
+              </tbody>
+            </table>
+          </div>
+        {{else}}
+          <p class="sub" style="margin:6px 0 0;color:var(--warn)">
+            We have not heard from this device recently, so we cannot tell
+            whether it is set up correctly. Connect it to the internet and
+            leave it on for a few minutes.
+            {{if .Compliance.ReportedAt}}Last heard from
+            {{.Compliance.ReportedAt.Format "2 Jan 2006"}}.{{end}}
+          </p>
+        {{end}}
+      {{else}}
+        <p class="sub" style="margin:6px 0 0">
+          This device has not checked in yet, so there is nothing to report.
+        </p>
+      {{end}}
+
+      {{if .Requires}}
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">What is asked of this device</summary>
+        <ul class="sub" style="margin:8px 0 0">
+          {{range .Requires}}<li>{{.}}</li>{{end}}
+        </ul>
+      </details>
+      {{end}}
+
+      {{if not .Device.ReportedLost}}
+      <form method="post" action="/me/devices/{{.Device.ID}}/lost" style="margin:14px 0 0">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="return" value="/me">
+        <label style="display:block;margin-bottom:8px">
+          <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Lost this device? Tell your IT team what happened.</span>
+          <input name="note" placeholder="Left it in a taxi on Awolowo Road"
+                 style="width:100%;max-width:420px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+        </label>
+        <button type="submit" style="font:inherit;font-size:13px;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Report it lost</button>
+        <span class="sub" style="display:block;margin-top:6px;font-size:12px">
+          This tells your IT team straight away. It does not erase anything:
+          only they can do that, and it takes two of them to erase a device
+          completely.
+        </span>
+      </form>
+      {{end}}
+    </div>
+  {{end}}
+
+  {{else}}
+  <p class="sub">No device is assigned to you yet.</p>
+  <p class="sub">If you have just been given a laptop or phone for work, your
+  IT team assigns it to you when they set it up. Until then there is nothing
+  to show here, and nothing is wrong.</p>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

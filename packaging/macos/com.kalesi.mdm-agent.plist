@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  A LaunchDaemon, not a LaunchAgent. A LaunchAgent runs as the logged-in
+  person and stops when they log out, which would make compliance reporting
+  depend on somebody being at the machine. This has to run whether anyone is
+  logged in or not, and it has to be root, because locking and wiping are
+  privileged.
+
+  launchd REFUSES to load a plist that is group or world writable, or one
+  not owned by root. That is a feature and the install script sets both; if
+  you edit this file in place, check them again afterwards.
+
+  The label must match the filename, or launchctl bootout will not find it.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kalesi.mdm-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/libexec/mdm-agent</string>
+    <string>-server</string>
+    <string>https://mdm.kalesi.example</string>
+    <string>-dir</string>
+    <string>/var/lib/mdm-agent</string>
+    <string>-every</string>
+    <string>15m</string>
+    <string>run</string>
+  </array>
+
+  <!--
+    run has its own loop with backoff, so launchd only needs to keep the
+    process alive. KeepAlive with SuccessfulExit false means a clean exit is
+    left alone and a crash is restarted, which is the behaviour wanted: an
+    agent that exits because its certificate was revoked should not be
+    restarted into a loop.
+  -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!--
+    Bounded, so ten thousand Macs coming back after a network outage do not
+    arrive at the gateway in the same second.
+  -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/mdm-agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/mdm-agent.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

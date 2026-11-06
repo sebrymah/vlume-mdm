@@ -1,0 +1,16 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  <h1>Recovery key</h1>
+  <p class="sub">The {{.KeyKind}} recovery key for <a href="/devices/{{.KeyDeviceID}}">this device</a>.
+  This look has been written to the audit log with your name and your reason. It is shown
+  once; the page will not show it again when reloaded.</p>
+  <div class="card" style="border-color:var(--brand)">
+    <code style="display:block;font-size:17px;letter-spacing:.06em;padding:10px 12px;background:var(--page);border-radius:6px;word-break:break-all">{{.KeyValue}}</code>
+  </div>
+  <p><a href="/devices/{{.KeyDeviceID}}">Back to the device</a></p>
+</main>
+</div>
+{{template "foot" .}}

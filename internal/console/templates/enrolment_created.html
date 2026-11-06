@@ -1,0 +1,45 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  <h1>Enrolment link ready</h1>
+  <p class="sub">Give this to whoever has the device. <strong>It is shown
+  once.</strong> We keep only a hash of it, so it cannot be read back, and if
+  it is lost the answer is to make another one.</p>
+
+  <div class="card" style="margin-bottom:18px">
+    <p class="k">The link</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="enrol-link" readonly value="{{.NewLink}}" onclick="this.select()"
+             style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--page)">
+      <button type="button" data-copy="enrol-link"
+              style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
+    </div>
+    <p class="sub" style="font-size:12px;margin:6px 0 0">This is for a laptop or desktop running your
+    organisation&rsquo;s device agent, and it points at this console&rsquo;s own address. Android phones
+    are invited from the Android page instead, with a link from Google.</p>
+  </div>
+  <script>
+    document.querySelectorAll('[data-copy]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = document.getElementById(b.getAttribute('data-copy'));
+        el.select();
+        var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); });
+        } else { document.execCommand('copy'); done(); }
+      });
+    });
+  </script>
+
+  <p class="sub">The device sends this link&rsquo;s token together with a
+  certificate signing request. What comes back is its identity certificate,
+  signed by your organisation&rsquo;s own authority, which is what it uses to
+  prove who it is from then on.</p>
+
+  <p><a href="/enrolments">Back to enrolments</a></p>
+</main>
+</div>
+{{template "foot" .}}

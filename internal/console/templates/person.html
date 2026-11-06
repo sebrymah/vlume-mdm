@@ -1,0 +1,52 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  {{if .Person}}
+  <h1>{{.Person.Label}}</h1>
+  <p class="sub">{{if .Person.Email}}{{.Person.Email}} · {{end}}{{if .Person.Subject}}<code>{{.Person.Subject}}</code> · {{end}}
+    first seen {{.Person.FirstSeen.Format "2 Jan 2006"}}, last {{.Person.LastSeen.Format "2 Jan 2006"}}
+    {{if .Person.Left}} · <span class="pill">left {{.Person.LeftAt.Format "2 Jan 2006"}}, said by {{.Person.LeftBy}}</span>{{end}}</p>
+
+  <h2>Devices</h2>
+  {{if .PersonDevices}}
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Device</th><th>Serial</th><th>System</th><th>State</th></tr></thead>
+    <tbody>
+    {{range .PersonDevices}}
+      <tr><td><a href="/devices/{{.ID}}">{{.Name}}</a></td><td><code>{{.Serial}}</code></td><td>{{.OSFamily}}</td><td>{{.State}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="sub">No device is assigned to this person.</p>
+  {{end}}
+
+  {{if and .CanOffboard (not .Person.Left)}}
+  <div class="card" style="margin-top:18px">
+    <h2 style="margin-top:0">Has {{.Person.Label}} left?</h2>
+    <p class="sub">Every device they hold is offboarded: a selective wipe through the command pipeline, then
+    retirement. Their address is then free for the next person, who inherits nothing.</p>
+    <form method="post" action="/people/offboard">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="person" value="{{.Person.ID}}">
+      <label style="display:block;margin-bottom:8px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Reason</span>
+        <input name="reason" value="left the organisation" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--bad);color:#fff;font:inherit;font-weight:600;cursor:pointer">They have left: offboard everything they hold</button>
+    </form>
+  </div>
+  {{end}}
+  {{else}}
+  <h1>Person</h1>
+  <p class="sub">No such person here.</p>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

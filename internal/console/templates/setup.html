@@ -1,0 +1,53 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "said" .}}
+  <h1>Setup</h1>
+  {{if .Setup.Ready}}
+  <p class="sub">Everything needed is in place. The rest of this list is
+  optional, or waiting on something outside this console.</p>
+  {{else}}
+  <p class="sub">What is left before this console is ready to run your
+  devices. You can leave and come back; nothing here has to be done in
+  order.</p>
+  {{end}}
+
+  {{if .Setup.TimeToFirst}}
+  <div class="card" style="margin-bottom:20px">
+    <p class="k">Sign-up to first device</p>
+    <p class="v">{{.Setup.TimeToFirst}}</p>
+    <p class="n">Created {{.Setup.CreatedAt.Format "2 Jan 2006 15:04"}}, first device
+    {{.Setup.FirstDeviceAt.Format "2 Jan 2006 15:04"}}.</p>
+  </div>
+  {{end}}
+
+  <div class="scroll">
+    <table>
+      <tbody>
+      {{range .Setup.Steps}}
+        <tr>
+          <td style="width:34px;font-size:18px;text-align:center">
+            {{if .Done}}<span style="color:var(--ok)" aria-label="done">&#10003;</span>
+            {{else if .Blocked}}<span style="color:var(--muted)" aria-label="waiting">&#8212;</span>
+            {{else}}<span style="color:var(--warn)" aria-label="to do">&#9675;</span>{{end}}
+          </td>
+          <td>
+            <strong>{{.Title}}</strong>
+            {{if .Optional}}<span class="pill" style="margin-left:6px">optional</span>{{end}}
+            <br><span class="sub" style="font-size:12.5px">{{.Detail}}</span>
+            {{if .Blocked}}<br><span style="font-size:12.5px;color:var(--muted)">{{.Blocked}}</span>{{end}}
+          </td>
+          <td style="text-align:right;white-space:nowrap">
+            {{if and .Href (not .Done)}}<a href="{{.Href}}">Do this</a>
+            {{else if .Href}}<a href="{{.Href}}" style="color:var(--muted)">Change</a>{{end}}
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</main>
+</div>
+{{template "foot" .}}

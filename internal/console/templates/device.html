@@ -1,0 +1,302 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+{{template "said" .}}
+{{if .Device}}
+<h1>{{.Device.Name}}</h1>
+<p class="sub">{{.Device.OSFamily}} · {{.Device.Ownership}} owned · <code>{{.Device.Serial}}</code>{{if .MACs}} · {{range $i, $m := .MACs}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}{{end}}</p>
+
+<div class="scroll" style="margin-bottom:18px">
+<table>
+  <caption class="sub" style="text-align:left;padding:11px 13px 0">Reported state</caption>
+  <tbody>
+    <tr><th scope="row">State</th><td><span class="pill">{{.Device.State}}</span></td></tr>
+    <tr><th scope="row">Tags</th><td>
+      {{range .Device.Tags}}<span class="pill" style="margin-right:4px">{{.}}</span>{{else}}<span style="color:var(--muted)">none</span>{{end}}
+      {{if .CanSetPolicy}}
+      <form method="post" action="/devices/{{.Device.ID}}/tags" style="display:inline-flex;gap:6px;margin:4px 0 0">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+        <input name="tags" value="{{range $i, $t := .Device.Tags}}{{if $i}}, {{end}}{{$t}}{{end}}" placeholder="pilot, finance"
+               style="padding:4px 8px;border:1px solid var(--line);border-radius:5px;font:inherit;font-size:12px;width:200px">
+        <button type="submit" style="font:inherit;font-size:12px;padding:4px 9px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Save tags</button>
+      </form>
+      {{end}}
+    </td></tr>
+    <tr><th scope="row">Held by</th>
+        <td>{{if .Holder}}<a href="/people/{{.Holder.ID}}">{{.Holder.Label}}</a>{{if .Holder.Left}} <span class="pill">left</span>{{end}}{{else if .Device.AssignedTo}}{{.Device.AssignedTo}}{{else}}<span style="color:var(--muted)">nobody. It will not appear on anyone's own page.</span>{{end}}</td></tr>
+    <tr><th scope="row">Ownership</th><td>{{.Device.Ownership}}</td></tr>
+    <tr><th scope="row">Last reported</th>
+        <td>{{if .Device.LastReportAt}}{{.Device.LastReportAt.Format "2 Jan 2006 15:04"}}{{else}}never{{end}}</td></tr>
+  </tbody>
+</table>
+</div>
+
+{{if or .CanLock .CanWipe}}
+<div class="panel">
+  <h2>Actions</h2>
+
+  {{if .CanLock}}
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/lock">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <div>
+      <label for="lock-reason">Why are you locking it?</label>
+      <input type="text" id="lock-reason" name="reason" placeholder="Reported stolen this morning">
+    </div>
+    <button type="submit" class="go">Lock the device</button>
+  </form>
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/lost-mode">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <div>
+      <label for="lost-reason">Why are you putting it in Lost Mode?</label>
+      <input type="text" id="lost-reason" name="reason" placeholder="Left on the train, owner has no way to reach it">
+    </div>
+    <button type="submit" class="go">Put in Lost Mode</button>
+  </form>
+  <p class="sub" style="margin:-6px 0 10px;font-size:12px">The lock screen shows who it belongs to and
+  asks the finder to hand it in. Delivered on Android now; waits on the Apple certificate elsewhere.</p>
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/lost-mode/end">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <div>
+      <label for="lost-end-reason">Why are you ending Lost Mode?</label>
+      <input type="text" id="lost-end-reason" name="reason" placeholder="Handed in at reception">
+    </div>
+    <button type="submit" class="go">End Lost Mode</button>
+  </form>
+  {{end}}
+
+  {{if .CanWipe}}
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/wipe">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <input type="hidden" name="scope" value="work">
+    <div>
+      <label for="work-reason">Why are you removing work data?</label>
+      <input type="text" id="work-reason" name="reason" placeholder="Employee is leaving on Friday">
+    </div>
+    <button type="submit" class="go">Remove work data only</button>
+  </form>
+  <p class="note" style="margin-bottom:16px">Takes off this tenant's accounts,
+  apps and profiles. The device keeps working and everything personal on it
+  stays. One approval, and it can be undone by enrolling again.</p>
+
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/wipe">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <input type="hidden" name="scope" value="all">
+    <div>
+      <label for="all-reason">Why are you erasing everything?</label>
+      <input type="text" id="all-reason" name="reason" placeholder="Stolen, police report filed">
+    </div>
+    <button type="submit" class="danger">Erase everything</button>
+  </form>
+  <p class="note">Returns the device to factory state. The person's own files,
+  photos and accounts go with it, and there is no undo. Two approvals from two
+  different roles, and you cannot approve your own request.</p>
+
+  {{if .Device.Retired}}
+  <p class="note"><strong>Retired</strong>{{if .Device.OffboardedAt}} on {{.Device.OffboardedAt.Format "2 Jan 2006 15:04"}}{{end}}. Its certificate is revoked and its slot is free.</p>
+  {{else if .Device.Offboarding}}
+  <p class="note"><strong>Being offboarded</strong> since {{.Device.OffboardingAt.Format "2 Jan 2006 15:04"}} by {{.Device.OffboardingBy}}.
+  Work data is being removed; the device is retired the moment that is confirmed.</p>
+  {{else}}
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/offboard">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <div>
+      <label for="off-reason">Why are you offboarding it?</label>
+      <input type="text" id="off-reason" name="reason" placeholder="Returned to IT; owner has left">
+    </div>
+    <button type="submit" class="go">Offboard this device</button>
+  </form>
+  <p class="note">Removes work data, then retires the device and revokes its certificate the
+  moment the removal is confirmed. Personal data stays.</p>
+  {{if .Device.AssignedTo}}
+  <form class="act" method="post" action="/people/offboard">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices">
+    <input type="hidden" name="email" value="{{.Device.AssignedTo}}">
+    <div>
+      <label for="leaver-reason">Has {{.Device.AssignedTo}} left?</label>
+      <input type="text" id="leaver-reason" name="reason" placeholder="Left on 30 November">
+    </div>
+    <button type="submit" class="go">Offboard everything they hold</button>
+  </form>
+  {{end}}
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+
+<div class="panel">
+  {{if .Device.ReportedLost}}
+  <div class="warnbar" style="background:#FDE7E5;border-color:#F0C4C0">
+    <p><strong>{{.Device.ReportedLostBy}} reported this device lost</strong> on
+    {{.Device.ReportedLostAt.Format "2 Jan 2006 at 15:04"}}.
+    {{if .Device.ReportedLostNote}}They said: &ldquo;{{.Device.ReportedLostNote}}&rdquo;{{end}}
+    Nothing has been done to the device: the actions above are still yours to
+    choose, with the approvals they normally need.</p>
+    {{if .CanLock}}
+    <form method="post" action="/devices/{{.Device.ID}}/found" style="margin:8px 0 0">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+      <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">It has turned up, clear this</button>
+    </form>
+    {{end}}
+  </div>
+  {{end}}
+
+  {{if .Device.Quarantined}}
+  <div class="warnbar" style="background:#FDE7E5;border-color:#F0C4C0">
+    <p><strong>Quarantined</strong>{{if .Device.QuarantinedAt}} since
+    {{.Device.QuarantinedAt.Format "2 Jan 2006 at 15:04"}}{{end}}{{if .Device.QuarantinedBy}}
+    by {{.Device.QuarantinedBy}}{{end}}{{if .Device.QuarantineReason}}: {{.Device.QuarantineReason}}{{end}}.
+    Nothing on it has been erased. A good report does not release it; a
+    person does, once it is put right.</p>
+    {{if .CanLock}}
+    <form method="post" action="/devices/{{.Device.ID}}/release" style="margin:8px 0 0">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+      <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Release from quarantine</button>
+    </form>
+    {{end}}
+  </div>
+  {{end}}
+
+  <h2>Recovery key</h2>
+  {{if .RecoveryKey}}
+  <p class="sub">A {{.RecoveryKey.Kind}} recovery key is escrowed, since
+  {{.RecoveryKey.EscrowedAt.Format "2 Jan 2006 15:04"}}. Revealed {{.RecoveryKey.RevealedCount}} time(s){{if .RecoveryKey.LastRevealedAt}}, last on {{.RecoveryKey.LastRevealedAt.Format "2 Jan 2006 15:04"}}{{end}}.</p>
+  {{if .CanRetrieveKey}}
+  <form class="act" method="post" action="/devices/{{.Device.ID}}/recovery-key/reveal">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+    <div>
+      <label for="key-reason">Why do you need it?</label>
+      <input type="text" id="key-reason" name="reason" placeholder="Owner locked out after a password reset, ticket 4412">
+    </div>
+    <button type="submit" class="go">Reveal the key</button>
+  </form>
+  <p class="note">Every reveal is written to the audit log with your name and reason.</p>
+  {{end}}
+  {{else}}
+  <p class="sub">No recovery key escrowed. The agent escrows one when the disk is encrypted with a key it was given.</p>
+  {{end}}
+
+  <h2>Installed apps</h2>
+  {{if .Apps}}
+  <p class="sub">{{len .Apps}} reported. <a href="/apps">Search the fleet</a>.</p>
+  <div class="scroll" style="max-height:320px;overflow:auto">
+  <table>
+    <thead><tr><th>App</th><th>Version</th><th>Identifier</th></tr></thead>
+    <tbody>{{range .Apps}}<tr><td>{{.Name}}</td><td>{{.Version}}</td><td class="sub" style="font-size:11px">{{.Identifier}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="sub">The device has not reported its installed apps.</p>
+  {{end}}
+
+  <h2>Compliance</h2>
+  {{if .Compliance}}
+    <p class="sub">
+      {{if eq .Compliance.State "compliant"}}Meeting everything asked of it.
+      {{else if eq .Compliance.State "not_compliant"}}Not meeting what is asked of it.
+      {{else}}We cannot tell. A device that has not said is never counted as a pass.
+      {{end}}
+      Last reported {{.Compliance.ReportedAt.Format "2 Jan 2006 15:04"}}.
+    </p>
+    {{if .Compliance.Findings}}
+    <div class="scroll" style="margin-bottom:18px">
+      <table>
+        <thead><tr><th>Required</th><th>What the device said</th><th>Asked by</th></tr></thead>
+        <tbody>
+        {{range .Compliance.Findings}}
+          <tr>
+            <td>{{.Rule}}</td>
+            <td>{{.Saw}}{{if .Unknown}} <span class="pill">not reported</span>{{end}}{{if .Fix}} <span class="pill">the device is asked to put this right</span>{{end}}</td>
+            <td>{{.From}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+    {{if .History}}
+    <h3 style="font-size:14px;margin:0 0 6px">History</h3>
+    <p class="sub" style="margin-top:0">Each time the verdict changed. A device saying the same thing every
+    report adds nothing here; the report that changed the answer does.</p>
+    <div class="scroll" style="margin-bottom:18px">
+      <table>
+        <thead><tr><th>When</th><th>Became</th><th>Policies</th></tr></thead>
+        <tbody>
+        {{range .History}}
+          <tr><td>{{.EvaluatedAt.Format "2 Jan 2006 15:04"}}</td><td>{{.State}}</td><td class="sub" style="font-size:11px">{{printf "%s" .Policies}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+  {{else}}
+    <p class="sub">This device has not reported yet, so there is no verdict.
+    It is not compliant and it is not failing: it has not been heard from.</p>
+  {{end}}
+
+  {{if .Requires}}
+  <p class="sub"><strong>What this device is held to</strong>, after the
+  strictest value of each rule wins:</p>
+  <ul class="sub" style="margin-top:-10px">
+    {{range .Requires}}<li>{{.}}</li>{{end}}
+  </ul>
+  {{else}}
+  <p class="sub">No policy applies to this device, so nothing is required of it.</p>
+  {{end}}
+
+
+  <h2>Commands</h2>
+  {{if .Commands}}
+  <div class="scroll">
+  <table>
+    <caption class="sub" style="text-align:left;padding:11px 13px 0">Everything asked of this device</caption>
+    <thead><tr>
+      <th scope="col">What</th><th scope="col">Asked by</th>
+      <th scope="col">When</th><th scope="col">Where it got to</th>
+    </tr></thead>
+    <tbody>
+    {{range .Commands}}
+      <tr>
+        <td>{{.Label}}</td>
+        <td>{{.RequestedBy}}</td>
+        <td>{{.RequestedAt.Format "2 Jan 15:04"}}</td>
+        <td>
+          {{if .Done}}<span style="color:var(--ok);font-weight:600">Confirmed by the device</span>
+          {{else if eq (printf "%s" .State) "refused"}}<span style="color:var(--bad);font-weight:600">Refused</span>
+          {{else if eq (printf "%s" .State) "held"}}<span style="color:var(--warn);font-weight:600">Waiting for approval</span>
+          {{else if eq (printf "%s" .State) "expired"}}<span style="color:var(--muted)">Expired</span>
+          {{else}}<span class="pill">{{.State}}</span>{{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="note">Only "confirmed by the device" means it happened. Queued and
+  sent mean the instruction exists and is on its way, which is not the same
+  thing and is never shown as if it were.</p>
+  {{else}}
+  <p style="margin:0;font-size:13px;color:var(--muted)">Nothing has been asked of this device.</p>
+  {{end}}
+</div>
+{{else}}
+<h1>No such device</h1>
+<p class="sub">It does not exist, or it belongs to another tenant. This page
+cannot tell those apart, and that is deliberate: saying which would confirm
+the device exists somewhere else.</p>
+{{end}}
+</main>
+</div>
+{{template "foot" .}}

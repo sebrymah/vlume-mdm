@@ -1,0 +1,89 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>Enrolments</h1>
+  <p class="sub">A device becomes managed by redeeming a one-time link. The
+  link is shown once, when it is made, and expires on its own. Naming who it
+  is for is what puts the device on that person&rsquo;s own page, so they can
+  see what to fix without raising a ticket.</p>
+
+  {{if .CanEnrol}}
+  <form method="post" action="/enrolments" class="card" style="margin-bottom:20px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="k">Invite a device</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:2 1 220px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">What is it</span>
+        <input name="label" required placeholder="Kemi's laptop"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 130px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Operating system</span>
+        <select name="os_family" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="macos">macOS</option>
+          <option value="ios">iOS</option>
+          <option value="ipados">iPadOS</option>
+          <option value="android">Android</option>
+          <option value="windows">Windows</option>
+        </select>
+      </label>
+      <label style="flex:2 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">For whom</span>
+        <input name="assigned_to" placeholder="kemi.adeleke@kalesi.example"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 130px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Owned by</span>
+        <select name="ownership" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="company">The company</option>
+          <option value="personal">The person</option>
+        </select>
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Make a link</button>
+    </div>
+  </form>
+  {{end}}
+
+  {{if .Enrolments}}
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>What</th><th>For</th><th>System</th><th>Owned by</th><th>Status</th>
+        <th>Made by</th><th>Expires</th>{{if .CanEnrol}}<th></th>{{end}}
+      </tr></thead>
+      <tbody>
+      {{range .Enrolments}}
+        <tr>
+          <td>{{.Label}}</td>
+          <td>{{if .AssignedTo}}{{.AssignedTo}}{{else}}<span style="color:var(--muted)">nobody yet</span>{{end}}</td>
+          <td>{{.OSFamily}}</td>
+          <td>{{.Ownership}}</td>
+          <td>{{.Status $.Now}}</td>
+          <td>{{.CreatedBy}}</td>
+          <td>{{.ExpiresAt.Format "2 Jan 2006, 15:04"}}</td>
+          {{if $.CanEnrol}}
+          <td style="text-align:right">
+            {{if .Usable $.Now}}
+            <form method="post" action="/enrolments/{{.ID}}/revoke" style="margin:0">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/enrolments">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Withdraw</button>
+            </form>
+            {{end}}
+          </td>
+          {{end}}
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="sub">No device has been invited yet.</p>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

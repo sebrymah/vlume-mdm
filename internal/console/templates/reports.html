@@ -1,0 +1,35 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>Reports</h1>
+  <p class="sub">The compliance report: every device, its verdict as the engine
+  would give it right now, and for anything not compliant, what is wrong and
+  which policy asked. Making one is recorded in the audit log.</p>
+
+  {{with .Reports}}
+  <div class="card">
+    <p class="k">Right now</p>
+    <p style="margin:4px 0 12px">{{.Summary}}.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="/reports/compliance.pdf" style="display:inline-block;padding:9px 16px;border-radius:6px;background:var(--brand);color:#fff;text-decoration:none;font-weight:600">Download PDF</a>
+      <a href="/reports/compliance.csv" style="display:inline-block;padding:9px 16px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-weight:600">Download CSV</a>
+    </div>
+  </div>
+
+  <h2>Every week</h2>
+  {{if .Scheduled}}
+  <p class="sub">A summary and a link go to <code>{{.Scheduled}}</code> once a week.
+  Change it under <a href="/notifications">Notifications</a>, topic <code>report.compliance</code>.</p>
+  {{else}}
+  <p class="sub">Nobody is scheduled to receive it. Point the <code>report.compliance</code>
+  topic at an inbox or a channel under <a href="/notifications">Notifications</a> and the
+  summary arrives once a week with a link to the download.</p>
+  {{end}}
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

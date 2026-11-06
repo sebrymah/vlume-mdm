@@ -1,0 +1,162 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>Android Enterprise</h1>
+  <p class="sub">Android devices are managed through Google. This tenant binds its
+  own enterprise, under its own Google account; the policy you write here is
+  delivered to it, devices enrol with a one-time token, and every fifteen
+  minutes what Google reports is judged against your policy like any other
+  report.</p>
+
+  {{with .Android}}
+  {{if not .InPlan}}
+  <div class="warnbar">
+    <p><strong>Not part of this plan.</strong> Android Enterprise is available on
+    the Growth and Scale plans. Ask the operator to move this tenant.</p>
+  </div>
+  {{else if not .Configured}}
+  <div class="warnbar">
+    <p><strong>Not available on this deployment.</strong> The operator has not
+    connected Google's Android Management API. Nothing here can be done until
+    that is in place; devices can be enrolled by link on other platforms in
+    the meantime.</p>
+  </div>
+
+  {{else if not .Bound}}
+  <div class="card">
+    <p class="k">Not bound</p>
+    <p class="sub" style="margin:4px 0 12px">Binding sends you to Google to sign in
+    with the account that will own this enterprise, and brings you back here.
+    Use a company account, not a personal one: the enterprise belongs to
+    whoever signs in.</p>
+    {{if $.CanManageAccess}}
+    <form method="post" action="/android/bind" style="margin:0">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="return" value="/android">
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Bind with Google</button>
+    </form>
+    {{else}}
+    <p class="sub" style="font-size:12px">A Super Admin binds it.</p>
+    {{end}}
+  </div>
+
+  {{else}}
+  <div class="card">
+    <p class="k">Bound</p>
+    <table style="margin-top:6px">
+      <tr><th scope="row">Enterprise</th><td><code>{{.Enterprise}}</code>{{if .DisplayName}} · {{.DisplayName}}{{end}}</td></tr>
+      <tr><th scope="row">Bound</th><td>{{.BoundAt.Format "2 Jan 2006 15:04"}} by {{.BoundBy}}</td></tr>
+      <tr><th scope="row">Devices</th><td>{{.Devices}}</td></tr>
+      <tr><th scope="row">Last sync</th><td>{{if .LastSyncedAt}}{{.LastSyncedAt.Format "2 Jan 2006 15:04"}}{{else}}<span style="color:var(--muted)">never</span>{{end}}
+        {{if .LastSyncError}}<span style="color:var(--bad)"> · last error: {{.LastSyncError}}</span>{{end}}</td></tr>
+    </table>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <form method="post" action="/android/sync" style="margin:0">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="return" value="/android">
+        <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Sync now</button>
+      </form>
+      {{if $.CanManageAccess}}
+      <form method="post" action="/android/unbind" style="margin:0">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="return" value="/android">
+        <button type="submit" style="font:inherit;font-size:12px;padding:5px 11px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--bad)">Unbind</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+
+  {{if .NewToken}}
+  <div class="card" style="border-color:var(--brand)">
+    <p style="margin:0 0 6px"><strong>Invitation for {{.NewTokenFor}}.</strong> Shown once.
+    {{if .NewTokenMailed}}Emailed to <strong>{{.NewTokenMailed}}</strong>.{{end}}
+    {{if .NewTokenMailError}}<span style="color:var(--bad)">The email could not be sent ({{.NewTokenMailError}}); pass the link on yourself.</span>{{end}}</p>
+
+    <p class="k" style="margin:10px 0 4px">The link to send</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="enrol-link" readonly value="{{.NewTokenLink}}" onclick="this.select()"
+             style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--page)">
+      <button type="button" data-copy="enrol-link"
+              style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
+    </div>
+    <p class="sub" style="font-size:12px;margin:6px 0 0">
+      {{if eq .NewTokenOwnership "personal"}}Opened on the phone, it installs Android Device Policy from Google Play and
+      sets up a work profile. Send it by email or chat; it is Google's address, so it works from anywhere.
+      {{else}}A company token is for a new or freshly reset phone only: at the first Google sign-in, type
+      <code>afw#setup</code> as the email and enter the code below when asked, or scan a QR made from the
+      payload below at the welcome screen. It tells Google the phone carries no personal use, so a phone
+      already in use will refuse it ("your IT admin doesn't allow a work profile"); for that phone make a
+      Personal token instead.{{end}} The link works once and expires in 7 days.</p>
+
+    <p class="k" style="margin:12px 0 4px">The code, for <code>afw#setup</code></p>
+    <code id="enrol-code" style="display:block;font-size:15px;letter-spacing:.08em;padding:8px 10px;background:var(--page);border-radius:6px">{{.NewToken}}</code>
+    <details style="margin-top:8px"><summary class="sub" style="font-size:12px;cursor:pointer">QR payload (for a QR generator, scanned at the welcome screen after six taps)</summary>
+      <pre style="font-size:11px;white-space:pre-wrap;word-break:break-all">{{.NewTokenQR}}</pre></details>
+  </div>
+  <script>
+    document.querySelectorAll('[data-copy]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = document.getElementById(b.getAttribute('data-copy'));
+        el.select();
+        var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); });
+        } else { document.execCommand('copy'); done(); }
+      });
+    });
+  </script>
+  {{end}}
+
+  {{if $.CanEnrol}}
+  <form method="post" action="/android/tokens" class="card">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="return" value="/android">
+    <p class="k">Invite an Android device</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:2 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">What is it</span>
+        <input name="label" required placeholder="Kemi's phone"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:2 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Who it is for</span>
+        <input name="assigned_to" placeholder="kemi@company.example"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 130px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Ownership</span>
+        <select name="ownership" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="personal">Personal (a phone in use gets a work profile)</option>
+          <option value="company">Company (a new or reset phone, fully managed)</option>
+        </select>
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Make a token</button>
+    </div>
+    <label style="display:block;margin-top:10px;font-size:13px">
+      <input type="checkbox" name="send" value="1" {{if .CanMail}}checked{{else}}disabled{{end}}>
+      Email the link to this person{{if not .CanMail}} (no mail server here; you will pass the link on yourself){{end}}
+    </label>
+  </form>
+  {{end}}
+
+  {{if .Tokens}}
+  <h2>Tokens issued</h2>
+  <table>
+    <thead><tr><th>Device</th><th>For</th><th>Ownership</th><th>Made</th><th>Expires</th></tr></thead>
+    <tbody>
+    {{range .Tokens}}
+      <tr><td>{{.Label}}</td><td>{{if .AssignedTo}}{{.AssignedTo}}{{else}}<span style="color:var(--muted)">nobody named</span>{{end}}</td>
+          <td>{{.Ownership}}</td><td>{{.CreatedAt.Format "2 Jan 15:04"}} by {{.CreatedBy}}</td><td>{{.ExpiresAt.Format "2 Jan 15:04"}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+  {{end}}
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

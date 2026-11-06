@@ -1,0 +1,149 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>Policies</h1>
+  <p class="sub">What devices here have to do. When more than one policy
+  applies to a device, the <strong>strictest</strong> value of each rule wins,
+  so assigning a looser policy can never relax a stricter one.</p>
+
+  {{if .CanSetPolicy}}
+  <div class="card" style="margin-bottom:14px">
+    <p class="k">Start from a template</p>
+    <p class="sub" style="margin:4px 0 10px;font-size:12px">A template fills the form. Nothing exists until you save it, under your own name.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      {{range .Templates}}
+      <a href="/policies?template={{.Key}}" title="{{.Why}}" style="display:inline-block;padding:6px 11px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-size:12.5px{{if and $.Template (eq $.Template.Key .Key)}};border-color:var(--brand);font-weight:600{{end}}">{{.Title}}</a>
+      {{end}}
+    </div>
+    {{if .Template}}<p class="sub" style="margin:10px 0 0;font-size:12px">{{.Template.Why}}</p>{{end}}
+  </div>
+  <form method="post" action="/policies" class="card" style="margin-bottom:20px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="k">Write a policy</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px">
+      <label style="flex:2 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Name</span>
+        <input name="name" required placeholder="Baseline"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 140px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Applies to</span>
+        <select name="os_family" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="">Any system</option>
+          <option value="macos">macOS</option>
+          <option value="ios">iOS</option>
+          <option value="ipados">iPadOS</option>
+          <option value="android">Android</option>
+          <option value="windows">Windows</option>
+        </select>
+      </label>
+      <label style="flex:1 1 140px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Owned by</span>
+        <select name="ownership" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="">Anyone</option>
+          <option value="company">The company</option>
+          <option value="personal">The person</option>
+        </select>
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Stage: percent of devices</span>
+        <input name="rollout_percent" type="number" min="0" max="99" placeholder="leave empty for everyone"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Stage: devices tagged</span>
+        <input name="rollout_tag" placeholder="pilot"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <p class="sub" style="grid-column:1/-1;margin:0;font-size:12px">A stage saves this as a rolling version:
+      the live one stays for everyone outside it. Promote it when it has proved itself, or withdraw it.</p>
+    </div>
+    <label style="display:block">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Rules</span>
+      <textarea name="rules" rows="6" spellcheck="false"
+        style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px"
+>{{if .Template}}{{.Template.Body}}{{else}}{"passcode_required": true, "passcode_min_length": 8, "disk_encryption_required": true}{{end}}</textarea>
+    </label>
+    <p class="sub" style="margin:8px 0 10px;font-size:12px">
+      Understood rules: {{range $i, $k := .RuleKinds}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}}.
+      Add <code>"on_failure": "quarantine"</code> and a device that fails this
+      policy is quarantined on the report that fails, unless more than 5% of
+      the fleet is failing at once, in which case nothing is quarantined and
+      you are told. Nothing is enforced unless a policy says so.
+      Add <code>"remediate": true</code> and a device that fails this policy
+      puts it right by itself where it can: the firewall on, disk encryption
+      started, the password length policy set, the screen lock shortened.
+      Without it a device only reports, and nothing on it is changed.
+      A name that is not on this list is refused rather than ignored, so a
+      typo cannot become a policy that requires nothing.
+    </p>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save as a new version</button>
+  </form>
+  {{end}}
+
+  {{if .Policies}}
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Version</th><th>Applies to</th><th>Requires</th>
+        <th>Written by</th>{{if .CanSetPolicy}}<th></th>{{end}}
+      </tr></thead>
+      <tbody>
+      {{range .Policies}}
+        <tr{{if not .Active}} style="opacity:.55"{{end}}>
+          <td>{{.Name}}</td>
+          <td>v{{.Version}}{{if not .Active}} (superseded){{else if .Rolling}}<br><span style="font-size:11px;color:var(--warn);font-weight:600">{{.StageWords}}</span>{{end}}</td>
+          <td>{{.Scope.Describe}}</td>
+          <td>
+            {{$r := .Rules.Describe}}
+            {{if $r}}<ul style="margin:0;padding-left:16px">{{range $r}}<li>{{.}}</li>{{end}}</ul>
+            {{else}}<span style="color:var(--muted)">nothing</span>{{end}}
+            {{if eq .OnFailure "quarantine"}}<span style="display:inline-block;margin-top:4px;font-size:11px;color:var(--bad);font-weight:600">quarantines on failure</span>{{end}}
+            {{if .Remediate}}<span style="display:inline-block;margin-top:4px;font-size:11px;color:var(--warn);font-weight:600">the device puts failures right</span>{{end}}
+          </td>
+          <td>{{.CreatedBy}}</td>
+          {{if $.CanSetPolicy}}
+          <td style="text-align:right">
+            {{if and .Active .Rolling}}
+            <form method="post" action="/policies/{{.Name}}/promote" style="margin:0 0 4px">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/policies">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:0;background:var(--brand);color:#fff;cursor:pointer">Promote to everyone</button>
+            </form>
+            <form method="post" action="/policies/{{.Name}}/halt" style="margin:0">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/policies">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Withdraw the stage</button>
+            </form>
+            {{else if .Active}}
+            <form method="post" action="/policies/{{.Name}}/retire" style="margin:0">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/policies">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Retire</button>
+            </form>
+            {{else}}
+            <form method="post" action="/policies/{{.Name}}/rollback" style="margin:0">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/policies">
+              <input type="hidden" name="version" value="{{.Version}}">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Restore v{{.Version}}</button>
+            </form>
+            {{end}}
+          </td>
+          {{end}}
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="sub">No policy has been written yet, so nothing is required of
+  any device and every device that reports will come back compliant.</p>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

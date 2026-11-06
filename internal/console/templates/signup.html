@@ -1,0 +1,134 @@
+{{template "head" .}}
+<header class="bar">
+  <span class="mark" aria-hidden="true">{{.Brand.MarkLetter}}</span>
+  <span style="font-size:14px;font-weight:600">{{.Brand.ProductName}}</span>
+</header>
+<main style="max-width:640px;margin:0 auto;padding:48px 16px 40px">
+{{with .Signup}}
+  {{if .Said}}<div class="said" role="status">{{.Said}}</div>{{end}}
+  {{if .Detail}}<div class="said" role="alert">{{.Detail}}</div>{{end}}
+
+  {{if eq .State "start"}}
+  <h1>Set up {{$.Brand.ProductName}} for your company</h1>
+  <p class="sub" style="font-size:14px;line-height:1.55">We send a link to your
+  work email. Opening it proves the address is yours; then you choose your
+  console's address and connect your company's sign-in. Nothing is created
+  until that is done.</p>
+  <form method="post" action="/signup" class="card" style="margin-top:20px">
+    <label style="display:block;margin-bottom:12px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Company</span>
+      <input name="company" required maxlength="120" value="{{.Company}}" placeholder="Kalesi Foods"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <label style="display:block;margin-bottom:12px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Work email</span>
+      <input name="email" type="email" required value="{{.Email}}" placeholder="you@yourcompany.com"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Send me the link</button>
+  </form>
+
+  {{else if eq .State "sent"}}
+  <h1>Check your email</h1>
+  <p class="sub" style="font-size:14px;line-height:1.55">We sent a link to
+  <strong>{{.Email}}</strong>. It works for 24 hours and once. If it does not
+  arrive, check the spam folder, then <a href="/signup">ask again</a>: asking
+  again replaces the first link.</p>
+
+  {{else if eq .State "slug"}}
+  <h1>Choose your console's address</h1>
+  <p class="sub" style="font-size:14px;line-height:1.55">Your address is
+  confirmed. Your console will answer at <code>{{.ConsoleURL}}</code>, with
+  your choice in place of <em>address</em>. Lowercase letters, digits and
+  hyphens. You can add your own domain later.</p>
+  <form method="post" action="/signup/{{.Token}}/slug" class="card" style="margin-top:20px">
+    <label style="display:block;margin-bottom:12px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Address</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <input name="slug" required maxlength="40" value="{{.Slug}}" pattern="[a-z0-9-]+"
+               style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace">
+        <span class="sub" style="font-size:13px">.{{.TenantDomain}}</span>
+      </span>
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Continue</button>
+  </form>
+
+  {{else if eq .State "idp"}}
+  <h1>Connect your company's sign-in</h1>
+  <p class="sub" style="font-size:14px;line-height:1.55">Your console will be at
+  <code>{{.ConsoleURL}}</code>. Nobody can sign in with a password here: your
+  people sign in through your own identity provider. Register an application
+  there first, with this redirect URL, then enter what it gives you.</p>
+  <form method="post" action="/signup/{{.Token}}/slug" style="margin:4px 0 0">
+    <input type="hidden" name="slug" value="">
+    <button type="submit" style="border:0;background:none;color:var(--brand);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer;padding:0">Change the address</button>
+  </form>
+  <div class="card" style="margin-top:14px">
+    <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Redirect URL to register at your provider</span>
+    <code style="font-size:13px;word-break:break-all">{{.RedirectURL}}</code>
+  </div>
+  <form method="post" action="/signup/{{.Token}}/finish" class="card" style="margin-top:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Issuer</span>
+        <input name="issuer" required placeholder="https://login.microsoftonline.com/…/v2.0"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Client id</span>
+        <input name="client_id" required
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Groups claim</span>
+        <input name="role_claim" value="groups"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Client secret</span>
+        <input name="client_secret" type="password" required autocomplete="off"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      {{if .Regions}}
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Where your data is kept</span>
+        <select name="region" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{range .Regions}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+        <span class="sub" style="display:block;font-size:12px;margin-top:4px">Chosen once. Your records, keys and reports stay in that region.</span>
+      </label>
+      {{end}}
+      <label style="grid-column:1/-1">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Administrators' group</span>
+        <input name="admin_group" required placeholder="MDM-Owners"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+        <span class="sub" style="display:block;font-size:12px;margin-top:4px">Members of this group in your
+        directory become Super Admins and can map every other group from the console.
+        Make sure you are in it.</span>
+      </label>
+    </div>
+    <p class="sub" style="margin:8px 0 12px;font-size:12px">
+      Microsoft Entra sends groups only once group claims are switched on for
+      the application registration. Google Workspace does not send groups at
+      all; map a custom claim instead.
+    </p>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Create my console</button>
+  </form>
+
+  {{else if eq .State "done"}}
+  <h1>Your console is ready</h1>
+  <p class="sub" style="font-size:14px;line-height:1.55"><strong>{{.Company}}</strong>
+  now has its own console at <a href="{{.ConsoleURL}}">{{.ConsoleURL}}</a>.
+  Sign in there with your company's identity provider. Members of the group
+  you named are its first administrators; everything else, including the
+  product's own name and colours, is set up from inside.</p>
+  <p style="margin-top:26px"><a href="{{.SignInURL}}" style="display:inline-block;padding:9px 16px;border-radius:6px;background:var(--brand);color:#fff;text-decoration:none;font-weight:600">Sign in to your console</a></p>
+  <p class="sub" style="font-size:12px;margin-top:18px">This link has now been used and will not work again.</p>
+
+  {{else}}
+  <h1>{{$.Title}}</h1>
+  <p style="margin-top:26px"><a href="/signup">Start again</a></p>
+  {{end}}
+{{end}}
+</main>
+{{template "foot" .}}

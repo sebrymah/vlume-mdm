@@ -1,0 +1,190 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "said" .}}
+  <h1>Notifications</h1>
+  <p class="sub">Where this console tells you things. Point a topic at a chat
+  channel your team already watches. We send to a channel rather than to
+  named people, because your staff live in your own directory and this
+  platform does not keep a copy of it.</p>
+
+  <div class="scroll" style="margin-bottom:22px">
+    <table>
+      <thead><tr><th>When</th><th>Goes to</th><th>Set by</th><th></th></tr></thead>
+      <tbody>
+      {{range .Notify.Topics}}
+        <tr>
+          <td>{{.Means}}<br><code style="font-size:11px;color:var(--muted)">{{.Topic}}</code></td>
+          <td>
+            {{$t := .Topic}}
+            {{range $.Notify.Targets}}{{if eq .Topic $t}}{{.Endpoint}}{{end}}{{end}}
+            {{if not .Configured}}<span style="color:var(--warn)">nobody</span>{{end}}
+          </td>
+          <td>{{range $.Notify.Targets}}{{if eq .Topic $t}}{{.CreatedBy}}{{end}}{{end}}</td>
+          <td style="text-align:right">
+            {{if .Configured}}
+            <form method="post" action="/notifications/{{.Topic}}/clear" style="margin:0">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="return" value="/notifications">
+              <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Stop</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="post" action="/notifications" class="card" style="margin-bottom:22px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="k">Point a topic somewhere</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:1 1 220px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">When</span>
+        <select name="topic" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{range .Notify.Topics}}<option value="{{.Topic}}">{{.Means}}</option>{{end}}
+        </select>
+      </label>
+      <label style="flex:1 1 130px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">How</span>
+        <select name="kind" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="webhook">A chat channel</option>
+          <option value="email">Email</option>
+          <option value="syslog">A SIEM (syslog)</option>
+          <option value="jira">A Jira issue</option>
+          <option value="servicenow">A ServiceNow incident</option>
+          <option value="log">This platform's own log</option>
+        </select>
+      </label>
+      <label style="flex:2 1 280px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Address</span>
+        <input name="endpoint" placeholder="https://hooks.slack.com/services/… or security@yourcompany.com"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save</button>
+    </div>
+    <p class="sub" style="margin:10px 0 0;font-size:12px">
+      A chat address is kept encrypted and never shown again, because anyone
+      holding one can post into that channel; an address inside this
+      console&rsquo;s own network is refused. An email address is shown in
+      full, because noticing that notifications have been going to somebody
+      who left is the thing most worth noticing on this page. Several
+      addresses can be separated by commas.
+    </p>
+  </form>
+
+  <h2>Where your mail comes from</h2>
+  <p class="sub">By default notifications are sent from this console&rsquo;s own
+  address. Add your own domain and they come from you instead, signed, so they
+  reach inboxes rather than spam folders.</p>
+
+  {{if .Notify.Domains}}
+  {{range .Notify.Domains}}
+  <div class="card" style="margin-bottom:14px">
+    <p style="margin:0 0 2px;font-size:16px;font-weight:600">{{.Domain}}
+      {{if .Verified}}<span class="pill" style="background:#E3F3E8;color:var(--ok)">verified</span>
+      {{else}}<span class="pill" style="background:#FFF4E0;color:var(--warn)">waiting for your DNS</span>{{end}}
+    </p>
+    <p class="sub" style="margin:0 0 12px">Mail will come from <strong>{{.From}}</strong></p>
+
+    {{if not .Verified}}
+    <p class="sub" style="margin:0 0 6px"><strong>Publish this TXT record</strong>, then press Check.
+    DNS can take a few minutes to an hour.</p>
+    <div class="scroll" style="margin-bottom:10px">
+      <table>
+        <tbody>
+          <tr><th scope="row" style="white-space:nowrap">Name</th>
+              <td><code style="font-size:12px">{{.RecordName}}</code></td></tr>
+          <tr><th scope="row">Value</th>
+              <td><code style="font-size:11px;word-break:break-all">{{range .RecordValue}}"{{.}}"
+                  {{end}}</code>
+              <br><span class="sub" style="font-size:11.5px">Shown as separate quoted
+              strings because a single DNS value cannot exceed 255 characters.
+              Most DNS consoles accept them pasted exactly like this; a few want
+              them joined with no spaces.</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    {{if .LastError}}
+    <p class="sub" style="color:var(--bad);margin:0 0 10px">Last check: {{.LastError}}</p>
+    {{end}}
+    {{end}}
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {{if not .Verified}}
+      <form method="post" action="/sending-domains/{{.Domain}}/verify" style="margin:0">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="return" value="/notifications">
+        <button type="submit" style="padding:8px 14px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Check now</button>
+      </form>
+      {{end}}
+      <form method="post" action="/sending-domains/{{.Domain}}/remove" style="margin:0">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="return" value="/notifications">
+        <button type="submit" style="font:inherit;font-size:13px;padding:8px 13px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Remove</button>
+      </form>
+    </div>
+  </div>
+  {{end}}
+  <p class="sub" style="margin-bottom:22px">{{.Notify.WhyNoSPF}}</p>
+  {{else}}
+  <form method="post" action="/sending-domains" class="card" style="margin-bottom:22px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="k">Send as your own domain</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:1 1 140px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">From</span>
+        <input name="from_local" value="notifications"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <span style="padding-bottom:10px;font-size:15px;color:var(--muted)">@</span>
+      <label style="flex:2 1 220px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Your domain</span>
+        <input name="domain" required placeholder="kalesi.example"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Add</button>
+    </div>
+    <p class="sub" style="margin:10px 0 0;font-size:12px">
+      We generate a signing key for you and show you one DNS record to
+      publish. Nothing is sent as your domain until that record is live and
+      we have checked it, so nobody can have this console send mail as a
+      domain they do not control.
+    </p>
+  </form>
+  {{end}}
+
+  <h2>What we have tried to tell you</h2>
+  {{if .Notify.Recent}}
+  <p class="sub">Including what did not get through. A notification that
+  failed is kept, because believing you were told when you were not is worse
+  than not being told.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>When</th><th>What</th><th>Got through</th></tr></thead>
+      <tbody>
+      {{range .Notify.Recent}}
+        <tr>
+          <td style="white-space:nowrap">{{.CreatedAt.Format "2 Jan 15:04"}}</td>
+          <td>{{.Subject}}<br><code style="font-size:11px;color:var(--muted)">{{.Topic}}</code></td>
+          <td>
+            {{if .Delivered}}<span class="pill" style="background:#E3F3E8;color:var(--ok)">yes</span>
+            {{else if eq .State "pending"}}<span class="pill">waiting{{if gt .Attempts 0}}, {{.Attempts}} tries{{end}}</span>
+            {{else}}<span class="pill" style="background:#FDE7E5;color:var(--bad)">no</span>
+              <br><span style="font-size:11px;color:var(--muted)">{{.LastError}}</span>
+            {{end}}
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="sub">Nothing yet.</p>
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

@@ -1,0 +1,35 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "placeholder" .}}
+  {{template "said" .}}
+  <h1>Apps</h1>
+  <p class="sub">Who has what. Each device reports what it has installed; this
+  searches across the fleet by app name.</p>
+  <form method="get" action="/apps" class="card" style="display:flex;gap:10px;align-items:flex-end">
+    <label style="flex:1">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">App name</span>
+      <input name="q" value="{{.AppQuery}}" placeholder="Zoom"
+             style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+    </label>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Search</button>
+  </form>
+  {{if .AppQuery}}
+  {{if .AppHolders}}
+  <table style="margin-top:12px">
+    <thead><tr><th>App</th><th>Version</th><th>Device</th><th>Assigned to</th></tr></thead>
+    <tbody>
+    {{range .AppHolders}}
+      <tr><td>{{.Name}}</td><td>{{.Version}}</td><td><a href="/devices/{{.DeviceID}}">{{.DeviceName}}</a> <span class="sub" style="font-size:11px">{{.Serial}}</span></td><td>{{.AssignedTo}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="sub" style="margin-top:12px">No device reports an app matching &ldquo;{{.AppQuery}}&rdquo;.</p>
+  {{end}}
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

@@ -1,0 +1,65 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+<h1>Dashboard</h1>
+<p class="sub">{{.Counts.Total}} devices enrolled</p>
+
+{{template "placeholder" .}}
+
+<div class="cards">
+  <div class="card">
+    <p class="k">Compliant</p>
+    <p class="v" style="color:var(--ok)">{{.Counts.Compliant}}</p>
+    <p class="n">{{pct .Counts.Compliant .Counts.Total}}% of {{.Counts.Total}}</p>
+  </div>
+  <div class="card">
+    <p class="k">Not compliant</p>
+    <p class="v" style="color:var(--bad)">{{.Counts.NotCompliant}}</p>
+    <p class="n">a rule is failing</p>
+  </div>
+  <div class="card">
+    <p class="k">State unknown</p>
+    <p class="v" style="color:var(--warn)">{{.Counts.StateUnknown}}</p>
+    <p class="n">no report in over 24h</p>
+  </div>
+  <div class="card">
+    <p class="k">Quarantined</p>
+    <p class="v">{{.Counts.Quarantined}}</p>
+    <p class="n">work access removed</p>
+  </div>
+</div>
+
+<div class="card" style="flex:none;margin-bottom:14px">
+  <p class="k" style="margin:0 0 4px">Compliant share, last 30 days</p>
+  {{if .TrendLine}}
+  <svg viewBox="0 0 {{.TrendLine.Width}} {{.TrendLine.Height}}" width="100%" height="{{.TrendLine.Height}}" role="img"
+       aria-label="Share of devices compliant over the last {{.TrendLine.Days}} days, now {{.TrendLine.Latest}} percent">
+    <line x1="6" y1="6" x2="{{.TrendLine.Width}}" y2="6" stroke="var(--line)" stroke-width="1"/>
+    <line x1="6" y1="{{.TrendLine.Height}}" x2="{{.TrendLine.Width}}" y2="{{.TrendLine.Height}}" stroke="var(--line)" stroke-width="1" transform="translate(0,-6)"/>
+    <path d="{{.TrendLine.Path}}" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    {{range .TrendLine.Points}}<circle cx="{{.X}}" cy="{{.Y}}" r="4" fill="var(--brand)" stroke="var(--card,#fff)" stroke-width="2"><title>{{.Title}}</title></circle>{{end}}
+  </svg>
+  <p class="n" style="margin:4px 0 0">{{.TrendLine.Latest}}% compliant today, over {{.TrendLine.Days}} days.
+    The top of the box is every device compliant; the bottom is none.</p>
+  <details style="margin-top:8px"><summary class="sub" style="cursor:pointer;font-size:12px">The days as a table</summary>
+  <table style="margin-top:6px"><thead><tr><th>Day</th><th>Compliant</th><th>Not compliant</th><th>Unknown</th><th>Quarantined</th><th>Never reported</th><th>Total</th></tr></thead>
+  <tbody>{{range .Trend}}<tr><td>{{.TakenOn.Format "2 Jan"}}</td><td>{{.Compliant}}</td><td>{{.NotCompliant}}</td><td>{{.StateUnknown}}</td><td>{{.Quarantined}}</td><td>{{.NeverSeen}}</td><td>{{.Total}}</td></tr>{{end}}</tbody></table>
+  </details>
+  {{else}}
+  <p class="n" style="margin:0">A trend needs two days of readings. The first is taken when the
+    service starts and one more each day; come back tomorrow.</p>
+  {{end}}
+</div>
+
+<div class="card" style="flex:none">
+  <p style="margin:0;font-size:12.5px;line-height:1.6;color:var(--muted)">
+  <strong style="color:var(--ink)">Why two red-ish numbers.</strong>
+  A device that fails a rule and a device we have not heard from are different
+  problems with different fixes. Merging them would make the second one look
+  like a security failure, and admins would learn to ignore the board.</p>
+</div>
+</main>
+</div>
+{{template "foot" .}}

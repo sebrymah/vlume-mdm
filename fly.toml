@@ -1,5 +1,5 @@
 # Fly.io app for the gateway (console, sign-in, sign-up and the device API).
-# Edit the three EDIT lines, then see deploy/README.md for the order of steps.
+# Edit the two EDIT lines (app name, region), then see deploy/README.md for the order of steps.
 
 app = "vlume-mdm"            # EDIT: must be unique across Fly; `fly apps create` tells you
 primary_region = "lhr"       # EDIT: pick the region nearest your database and customers
@@ -16,8 +16,8 @@ primary_region = "lhr"       # EDIT: pick the region nearest your database and c
   # address they choose. (assumption, checked after the first deploy: a sign-in
   # in the audit log shows your real address, not a 172.16 one)
   MDM_TRUSTED_PROXIES = "172.16.0.0/12"
-  MDM_SIGNUP_HOST = "app.example.com"            # EDIT: the operator host (home page and sign-up)
-  MDM_SIGNUP_TENANT_DOMAIN = "example.com"       # EDIT: customers get <name>.<this>
+  MDM_SIGNUP_HOST = "app.mdm.vlumesec.com"
+  MDM_SIGNUP_TENANT_DOMAIN = "mdm.vlumesec.com"   # customers get <name>.mdm.vlumesec.com
   MDM_SIGNUP_PRODUCT_NAME = "Vlume"
 
 [http_service]
@@ -43,7 +43,7 @@ primary_region = "lhr"       # EDIT: pick the region nearest your database and c
   method = "GET"
   path = "/"
   protocol = "http"
-  headers = { Host = "app.example.com" }   # EDIT: same as MDM_SIGNUP_HOST
+  headers = { Host = "app.mdm.vlumesec.com" }
 
 [[vm]]
   size = "shared-cpu-1x"

@@ -160,7 +160,24 @@ func cleanSlug(s string) (string, error) {
 	if strings.HasPrefix(s, "-") || strings.HasSuffix(s, "-") {
 		return "", ErrBadSlug
 	}
+	if reservedSlugs[s] {
+		return "", ErrSlugTaken
+	}
 	return s, nil
+}
+
+// reservedSlugs are names a customer cannot have, because each is a hostname
+// the platform or its operator uses under the same domain: the operator's own
+// host (app), the public site (www), mail and name-server records, and the
+// words people would trust on sight (admin, login, support). A customer on one
+// would either shadow the operator's page or look like it.
+var reservedSlugs = map[string]bool{
+	"app": true, "www": true, "admin": true, "api": true, "mail": true, "smtp": true,
+	"imap": true, "pop": true, "mx": true, "ns": true, "ns1": true, "ns2": true,
+	"status": true, "support": true, "help": true, "docs": true, "login": true,
+	"signin": true, "signup": true, "auth": true, "sso": true, "static": true,
+	"cdn": true, "console": true, "portal": true, "dashboard": true, "billing": true,
+	"security": true, "root": true, "mdm": true, "vlume": true, "vlumesec": true,
 }
 
 func cleanHost(h string) (string, error) {

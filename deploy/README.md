@@ -1,11 +1,11 @@
 # Deploying: Supabase (database), Fly.io (gateway), Vercel (public site)
 
 ```
- visitors ──▶ Vercel   www.<domain>        public page, "Sign in" finder
+ visitors ──▶ Vercel   mdm.vlumesec.com            public page, "Sign in" finder
                 │  form posts to
                 ▼
- browsers ──▶ Fly.io   app.<domain>        home, sign-up, /find
- devices  ──▶ Fly.io   <name>.<domain>     each organisation's console and device API
+ browsers ──▶ Fly.io   app.mdm.vlumesec.com        home, sign-up, /find
+ devices  ──▶ Fly.io   <name>.mdm.vlumesec.com     each organisation's console and device API
                 │  database logins (mdm_app, mdm_operator)
                 ▼
               Supabase Postgres             row-level security keeps tenants apart
@@ -26,7 +26,7 @@ functions. The public page is exactly what Vercel is good at.
 
 | Need | Why | Note |
 |---|---|---|
-| A domain you control | Each organisation gets `<name>.<domain>`; Fly's own `*.fly.dev` cannot do that | One purchase, then two DNS records |
+| A domain you control | Each organisation gets `<name>.mdm.vlumesec.com`; Fly's own `*.fly.dev` cannot do that | You have `vlumesec.com`; the four records are in step 3 |
 | Supabase account | The database | Choose a region near your customers; Europe (London) is the closest Supabase offers to West Africa (assumption, check their current list) |
 | Fly.io account with a card | Runs the gateway | Roughly 5 to 6 US dollars a month for the size in `fly.toml` (assumption, check Fly's pricing page) |
 | Vercel account | The public page | Free tier is enough |
@@ -78,7 +78,7 @@ brew install flyctl
 fly auth login
 ```
 
-Edit the three `EDIT` lines in `fly.toml` (app name, region, your domain). Then:
+Edit the two `EDIT` lines in `fly.toml` (app name, region). The domain is already set. Then:
 
 ```bash
 cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly apps create vlume-mdm
@@ -124,26 +124,31 @@ cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" 
 cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly ips list
 ```
 
-At your domain's DNS provider add (the `fly certs` command below prints the exact challenge records):
+At the DNS provider for `vlumesec.com` add these records (the `fly certs` commands below print
+the exact challenge value for the third one):
 
 | Name | Type | Value |
 |---|---|---|
-| `app` | A and AAAA | the two addresses from `fly ips list` |
-| `*` | A and AAAA | the same two addresses (every organisation's console) |
-| `_acme-challenge` | CNAME | the value `fly certs add` prints (needed for the wildcard) |
-| `www` | CNAME | Vercel's value (step 4) |
+| `app.mdm` | A and AAAA | the two addresses from `fly ips list` |
+| `*.mdm` | A and AAAA | the same two addresses (every organisation's console) |
+| `_acme-challenge.mdm` | CNAME | the value `fly certs add` prints (proves the wildcard) |
+| `mdm` | CNAME | `cname.vercel-dns.com` (the public page; Vercel shows the final value in step 4) |
+
+A more specific name beats the wildcard, so `app.mdm` and `mdm` keep going where they should while
+`*.mdm` catches every customer. Short names such as `app`, `www`, `admin` and `login` are refused
+at sign-up so no customer can sit on top of them.
 
 ```bash
-cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly certs add app.<domain>
+cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly certs add app.mdm.vlumesec.com
 ```
 
 ```bash
-cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly certs add "*.<domain>"
+cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly certs add "*.mdm.vlumesec.com"
 ```
 
 ## 4. Vercel: the public page
 
-Edit `deploy/site/config.js`: set `app` to `https://app.<domain>`. Then:
+The page already points at `https://app.mdm.vlumesec.com`. Deploy it:
 
 ```bash
 cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform/deploy/site" && npx vercel login
@@ -153,13 +158,13 @@ cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform/d
 cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform/deploy/site" && npx vercel --prod
 ```
 
-In the Vercel project, **Settings, Domains**: add `www.<domain>` and follow the DNS value it shows.
+In the Vercel project, **Settings, Domains**: add `mdm.vlumesec.com` and, if the value it shows differs from the table above, use Vercel's.
 
 ## 5. Check it
 
-1. `https://www.<domain>` shows the page; "Set up your company" opens `https://app.<domain>/signup`.
+1. `https://mdm.vlumesec.com` shows the page; "Set up your company" opens `https://app.mdm.vlumesec.com/signup`.
 2. Sign up with "I do not have an identity provider". The welcome email arrives; the link sets a password.
-3. Sign in at `https://<name>.<domain>/signin`, set up the authenticator app, and you are in as Super Admin.
+3. Sign in at `https://<name>.mdm.vlumesec.com/signin`, set up the authenticator app, and you are in as Super Admin.
 4. Look at the audit trail: the sign-in line should show your real address, not one starting `172.16`. If it shows `172.16`, tell me and I will change `MDM_TRUSTED_PROXIES`.
 
 ## Running a one-off command (list organisations, add a host)

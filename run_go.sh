@@ -1404,6 +1404,14 @@ GRANT SELECT ON devices TO mdm_operator;"
     '	case "no_such_role":'
   ;;
 
+--break-reserved)
+  # A customer takes the short name app or www, the operator's own hosts.
+  echo "==> NEGATIVE CONTROL: reserved short names are allowed"
+  patch internal/directory/onboard.go \
+    "	if reservedSlugs[s] {" \
+    "	if false && reservedSlugs[s] {"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1462,7 +1470,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

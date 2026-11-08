@@ -227,6 +227,7 @@ type wireDevice struct {
 	Name                string `json:"name"`
 	State               string `json:"state"`
 	EnrollmentTokenName string `json:"enrollmentTokenName"`
+	PolicyName          string `json:"policyName"`
 	LastStatusReport    string `json:"lastStatusReportTime"`
 	PolicyCompliant     bool   `json:"policyCompliant"`
 	HardwareInfo        struct {
@@ -254,7 +255,7 @@ type wireDevice struct {
 
 func (d wireDevice) device() Device {
 	out := Device{
-		Name: d.Name, EnrollmentToken: d.EnrollmentTokenName, State: d.State,
+		Name: d.Name, EnrollmentToken: d.EnrollmentTokenName, State: d.State, PolicyName: d.PolicyName,
 		Serial: d.HardwareInfo.SerialNumber, Model: d.HardwareInfo.Model,
 		AndroidVersion: d.SoftwareInfo.AndroidVersion, Compliant: d.PolicyCompliant,
 	}

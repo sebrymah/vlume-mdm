@@ -11,16 +11,145 @@
   so assigning a looser policy can never relax a stricter one.</p>
 
   {{if .CanSetPolicy}}
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px">
+    {{range .OSTabs}}<a href="/policies{{if .OS}}?os={{.OS}}{{end}}" style="display:inline-block;padding:6px 13px;border-radius:999px;border:1px solid {{if .Active}}var(--brand){{else}}var(--line){{end}};background:{{if .Active}}var(--brand){{else}}#fff{{end}};color:{{if .Active}}#fff{{else}}var(--ink){{end}};text-decoration:none;font-size:13px;font-weight:600">{{.Name}}</a>{{end}}
+  </div>
+
+  {{if .Form}}
+  <form method="post" action="/policies" class="card" style="margin-bottom:20px">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="guided" value="1">
+    <input type="hidden" name="os_family" value="{{.Form.OS}}">
+    <p class="k">{{if .Form.Editing}}Change{{else}}New{{end}} {{.Form.OSName}} policy</p>
+    {{if .Form.Why}}<p class="sub" style="margin:4px 0 10px">{{.Form.Why}}</p>{{end}}
+    {{if .Form.Note}}<div class="warnbar"><p>{{.Form.Note}}</p></div>{{end}}
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:10px 0">
+      <label style="flex:2 1 240px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Name</span>
+        <input name="name" required value="{{.Form.Name}}" {{if .Form.Editing}}readonly{{end}} placeholder="{{.Form.OSName}} baseline"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Owned by</span>
+        <select name="ownership" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="" {{if eq .Form.Ownership ""}}selected{{end}}>Any {{.Form.OSName}} device</option>
+          <option value="company" {{if eq .Form.Ownership "company"}}selected{{end}}>Company-owned only</option>
+          <option value="personal" {{if eq .Form.Ownership "personal"}}selected{{end}}>Personal only</option>
+        </select>
+      </label>
+    </div>
+    <p class="sub" style="font-size:12.5px;margin:0">Leave a setting empty or unticked and the policy says nothing about it. When several policies apply to a device, the strictest value of each setting wins.</p>
+
+      {{range .Form.Sections}}
+      <h2 style="margin:18px 0 8px;font-size:15px">{{.Name}}</h2>
+      {{range .Fields}}
+      <div style="padding:9px 0;border-top:1px solid var(--line)">
+        {{if eq .Kind "bool"}}
+        <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="{{.Input}}" value="1" {{if .Checked}}checked{{end}} style="margin-top:3px">
+          <span><strong style="font-weight:600">{{.Label}}</strong>{{if .Badge}} <span style="font-size:11px;color:var(--warn)">({{.Badge}})</span>{{end}}
+          {{if .Help}}<br><span class="sub" style="font-size:12.5px">{{.Help}}</span>{{end}}</span></label>
+        {{else}}
+        <label style="display:block">
+          <span style="display:block;margin-bottom:4px"><strong style="font-weight:600">{{.Label}}</strong>{{if .Badge}} <span style="font-size:11px;color:var(--warn)">({{.Badge}})</span>{{end}}</span>
+          {{if .Help}}<span class="sub" style="display:block;font-size:12.5px;margin-bottom:5px">{{.Help}}</span>{{end}}
+          {{if eq .Kind "int"}}
+          <span style="display:flex;gap:8px;align-items:center"><input name="{{.Input}}" type="number" min="{{.Min}}" max="{{.Max}}" value="{{.Value}}" placeholder="not set"
+            style="width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit"><span class="sub" style="font-size:12.5px">{{.Unit}} ({{.Min}} to {{.Max}})</span></span>
+          {{else if eq .Kind "choice"}}
+          <select name="{{.Input}}" style="width:100%;max-width:460px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+            <option value="">Not set (leave it to the device)</option>
+            {{$v := .Value}}{{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+          {{else if eq .Kind "text"}}
+          <input name="{{.Input}}" value="{{.Value}}" maxlength="300" placeholder="not set"
+            style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{else if eq .Kind "apps"}}
+          <textarea name="{{.Input}}" rows="5" spellcheck="false" placeholder="com.example.crm required&#10;com.example.news available&#10;com.example.game blocked"
+            style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px">{{.Value}}</textarea>
+          {{end}}
+        </label>
+        {{end}}
+        {{if .Note}}<p class="sub" style="font-size:11.5px;margin:4px 0 0;color:var(--warn)">{{.Note}}</p>{{end}}
+      </div>
+      {{end}}
+      {{end}}
+
+      <h2 style="margin:18px 0 8px;font-size:15px">What counts as failing</h2>
+      <p class="sub" style="font-size:12.5px;margin:0 0 6px">Every report from a device is judged against these. A device that does not say is unknown, never a pass.</p>
+      {{range .Form.Rules}}
+      <div style="padding:8px 0;border-top:1px solid var(--line)">
+        {{if eq .Kind "bool"}}
+        <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="{{.Input}}" value="1" {{if .Checked}}checked{{end}}> {{.Label}}</label>
+        {{else if eq .Kind "int"}}
+        <label style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">{{.Label}} <input name="{{.Input}}" type="number" min="1" value="{{.Value}}" placeholder="not set" style="width:110px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit"> {{.Unit}}</label>
+        {{else}}
+        <label style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">{{.Label}} <input name="{{.Input}}" value="{{.Value}}" placeholder="not set" style="width:110px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit"></label>
+        {{end}}
+      </div>
+      {{end}}
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:14px 0">
+      <label style="display:flex;gap:8px;align-items:center">What happens to a device that fails:
+        <select name="on_failure" style="padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="none" {{if eq .Form.OnFailure "none"}}selected{{end}}>Nothing, just report it</option>
+          <option value="quarantine" {{if eq .Form.OnFailure "quarantine"}}selected{{end}}>Quarantine it</option>
+        </select></label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="remediate" value="1" {{if .Form.Remediate}}checked{{end}}> Let the device put failures right by itself where it can</label>
+    </div>
+    <details style="margin:0 0 12px"><summary class="sub" style="cursor:pointer;font-size:13px">Roll this out to some devices first</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px">
+        <label><span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Percent of devices</span>
+          <input name="rollout_percent" type="number" min="0" max="99" placeholder="empty for everyone" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit"></label>
+        <label><span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Devices tagged</span>
+          <input name="rollout_tag" placeholder="pilot" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit"></label>
+      </div>
+    </details>
+    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save as a new version</button>
+    <a href="/policies{{if .OSFilter}}?os={{.OSFilter}}{{end}}" style="margin-left:12px;font-size:13px">Cancel</a>
+  </form>
+
+  {{else}}
   <div class="card" style="margin-bottom:14px">
-    <p class="k">Start from a template</p>
-    <p class="sub" style="margin:4px 0 10px;font-size:12px">A template fills the form. Nothing exists until you save it, under your own name.</p>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
-      {{range .Templates}}
-      <a href="/policies?template={{.Key}}" title="{{.Why}}" style="display:inline-block;padding:6px 11px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-size:12.5px{{if and $.Template (eq $.Template.Key .Key)}};border-color:var(--brand);font-weight:600{{end}}">{{.Title}}</a>
+    <p class="k">Ready-made policies</p>
+    <p class="sub" style="margin:4px 0 10px;font-size:12.5px">One click adds a policy to your organisation, and then it is yours to change. Nothing applies to a device until you add it.</p>
+    {{range .LibraryOS}}
+    <h2 style="margin:14px 0 8px;font-size:15px">{{.OSName}}</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px">
+      {{range .Items}}
+      <div style="border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px">
+        <strong style="font-size:14px">{{.Title}}</strong>
+        <span style="font-size:11px;color:var(--muted)">For {{.Applies}}</span>
+        <span class="sub" style="font-size:12.5px;flex:1">{{.Why}}</span>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+          {{if .Added}}
+          <span style="font-size:12px;color:var(--ok);font-weight:600">Added</span>
+          <a href="/policies?edit={{.Title}}" style="font-size:12px">Change it</a>
+          {{else}}
+          <form method="post" action="/policy-library/{{.Key}}" style="margin:0">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="return" value="/policies{{if $.OSFilter}}?os={{$.OSFilter}}{{end}}">
+            <button type="submit" style="font:inherit;font-size:12px;padding:6px 12px;border-radius:6px;border:0;background:var(--brand);color:#fff;font-weight:600;cursor:pointer">Add this policy</button>
+          </form>
+          <a href="/policies?template={{.Key}}" style="font-size:12px">Change it first</a>
+          {{end}}
+        </div>
+      </div>
       {{end}}
     </div>
-    {{if .Template}}<p class="sub" style="margin:10px 0 0;font-size:12px">{{.Template.Why}}</p>{{end}}
+    {{end}}
+    <p class="k" style="margin:18px 0 6px">Or write your own</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <a href="/policies?new=android" style="display:inline-block;padding:7px 13px;border-radius:6px;border:1px solid var(--brand);color:var(--brand);text-decoration:none;font-size:13px;font-weight:600">New Android policy</a>
+      <a href="/policies?new=windows" style="display:inline-block;padding:7px 13px;border-radius:6px;border:1px solid var(--brand);color:var(--brand);text-decoration:none;font-size:13px;font-weight:600">New Windows policy</a>
+    </div>
+    <p class="sub" style="font-size:12px;margin:8px 0 0">iOS and macOS do not have their own settings list yet. Their policies are written as rules, under Advanced below.</p>
   </div>
+
+  <details class="card" style="margin-bottom:20px">
+    <summary class="sub" style="cursor:pointer;font-size:13px">Advanced: write the rules as JSON (any system, including iOS and macOS)</summary>
+    <div style="margin-top:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        {{range .Templates}}<a href="/policies?template={{.Key}}" title="{{.Why}}" style="display:inline-block;padding:5px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;font-size:12.5px">{{.Title}}</a>{{end}}
+      </div>
   <form method="post" action="/policies" class="card" style="margin-bottom:20px">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <p class="k">Write a policy</p>
@@ -83,6 +212,9 @@
     </p>
     <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save as a new version</button>
   </form>
+    </div>
+  </details>
+  {{end}}
   {{end}}
 
   {{if .Policies}}
@@ -97,11 +229,12 @@
         <tr{{if not .Active}} style="opacity:.55"{{end}}>
           <td>{{.Name}}</td>
           <td>v{{.Version}}{{if not .Active}} (superseded){{else if .Rolling}}<br><span style="font-size:11px;color:var(--warn);font-weight:600">{{.StageWords}}</span>{{end}}</td>
-          <td>{{.Scope.Describe}}</td>
+          <td>{{.Scope.Describe}}{{if not .Scope.OSFamily}}<br><span style="font-size:11px;color:var(--warn)">any system (older style)</span>{{end}}</td>
           <td>
             {{$r := .Rules.Describe}}
             {{if $r}}<ul style="margin:0;padding-left:16px">{{range $r}}<li>{{.}}</li>{{end}}</ul>
             {{else}}<span style="color:var(--muted)">nothing</span>{{end}}
+            {{if .Config}}<span style="display:block;margin-top:4px;font-size:11px;color:var(--muted)">and sets {{len .Config}} setting{{if ne (len .Config) 1}}s{{end}}</span>{{end}}
             {{if eq .OnFailure "quarantine"}}<span style="display:inline-block;margin-top:4px;font-size:11px;color:var(--bad);font-weight:600">quarantines on failure</span>{{end}}
             {{if .Remediate}}<span style="display:inline-block;margin-top:4px;font-size:11px;color:var(--warn);font-weight:600">the device puts failures right</span>{{end}}
           </td>
@@ -120,7 +253,8 @@
               <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Withdraw the stage</button>
             </form>
             {{else if .Active}}
-            <form method="post" action="/policies/{{.Name}}/retire" style="margin:0">
+            {{if .Scope.OSFamily}}{{if or (eq .Scope.OSFamily "android") (eq .Scope.OSFamily "windows")}}<a href="/policies?edit={{.Name}}" style="font-size:12px;margin-right:8px">Change</a>{{end}}{{end}}
+            <form method="post" action="/policies/{{.Name}}/retire" style="margin:0;display:inline-block">
               <input type="hidden" name="csrf" value="{{$.CSRF}}">
               <input type="hidden" name="return" value="/policies">
               <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer">Retire</button>

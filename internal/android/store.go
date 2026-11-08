@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"platform/internal/catalog"
 	"platform/internal/data"
 	"platform/internal/notify"
 	"platform/internal/policy"
@@ -33,20 +34,42 @@ type Binding struct {
 	BoundAt       time.Time
 	LastSyncedAt  *time.Time
 	LastSyncError string
+	// PersonalPolicyAt is when the policy for work-profile phones was last
+	// delivered; nil until it first is.
+	PersonalPolicyAt *time.Time
 }
 
-// PolicyID is the one policy per enterprise this platform drives. The
-// effective rules for Android devices are merged here and delivered as it.
-const PolicyID = "default"
+// Two Google policies per enterprise, because a company phone and a work
+// profile on somebody's own phone are not given the same things: a camera
+// block that covers the whole of a company phone covers only the work apps
+// on a personal one, and some settings (copying between work and personal)
+// exist only for the second. The effective rules and settings for each
+// ownership are merged and delivered as its policy, and an enrolment token
+// names the one that fits the phone it is for.
+const (
+	PolicyID         = "default"  // company-owned, fully managed
+	PolicyIDPersonal = "personal" // a work profile on a personal phone
+)
 
+// PolicyName is the company policy's Google name. It is what most callers
+// mean and what existing tokens carry.
 func (b Binding) PolicyName() string { return b.Name + "/policies/" + PolicyID }
+
+// PolicyNameFor is the Google policy that fits a phone of this ownership.
+func (b Binding) PolicyNameFor(ownership string) string {
+	if ownership == "personal" {
+		return b.Name + "/policies/" + PolicyIDPersonal
+	}
+	return b.PolicyName()
+}
 
 func Bound(ctx context.Context, tx *data.Tx) (Binding, bool, error) {
 	var b Binding
 	err := tx.QueryRow(ctx, `
-		SELECT name, display_name, bound_by, bound_at, last_synced_at, coalesce(last_sync_error,'')
+		SELECT name, display_name, bound_by, bound_at, last_synced_at, coalesce(last_sync_error,''),
+		       personal_policy_at
 		  FROM android_enterprises`).Scan(&b.Name, &b.DisplayName, &b.BoundBy, &b.BoundAt,
-		&b.LastSyncedAt, &b.LastSyncError)
+		&b.LastSyncedAt, &b.LastSyncError, &b.PersonalPolicyAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Binding{}, false, nil
 	}
@@ -140,26 +163,69 @@ func Tokens(ctx context.Context, tx *data.Tx) ([]TokenRecord, error) {
 	return out, rows.Err()
 }
 
-// DeliverPolicy merges the effective rules for Android devices and sends
-// them to the tenant's enterprise. It returns the rules that are judged
+// Effective is the merged rules and settings for Android devices of one
+// ownership, and the policies that produced them.
+func Effective(ctx context.Context, tx *data.Tx, ownership string) (policy.Rules, catalog.Values, []policy.Policy, error) {
+	rules, applied, err := policy.EffectiveFor(ctx, tx, "android", ownership)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// A company phone is not handed a setting that exists only for a work
+	// profile, and a work profile is not handed one that exists only for a
+	// company phone. A field Google does not honour for that kind of phone is
+	// the kind of thing it can refuse a whole policy over.
+	cfg := policy.MergeConfig(applied)
+	for key := range cfg {
+		if s, ok := catalog.Lookup(key); ok && s.For != "all" && s.For != ownership {
+			delete(cfg, key)
+		}
+	}
+	return rules, cfg, applied, nil
+}
+
+// DeliverPolicy merges the effective rules and settings for Android devices
+// and sends them to the tenant's enterprise, one Google policy for company
+// phones and one for work profiles. It returns the rules that are judged
 // rather than enforced, so the caller can say so.
 func DeliverPolicy(ctx context.Context, tx *data.Tx, p Provider) ([]string, error) {
 	b, bound, err := Bound(ctx, tx)
 	if err != nil || !bound {
 		return nil, err
 	}
-	// Company-owned is the stricter merge; a personal device's work
-	// profile gets the same policy, which is what a work profile is for.
-	rules, _, err := policy.EffectiveFor(ctx, tx, "android", "company")
-	if err != nil {
+	var judged []string
+	for _, own := range []struct{ ownership, id string }{{"company", PolicyID}, {"personal", PolicyIDPersonal}} {
+		rules, cfg, _, err := Effective(ctx, tx, own.ownership)
+		if err != nil {
+			return nil, err
+		}
+		body, undelivered := TranslateWith(rules, cfg)
+		if err := p.ApplyPolicy(ctx, b.Name, own.id, body); err != nil {
+			return nil, err
+		}
+		if own.ownership == "company" {
+			judged = undelivered
+		}
+		if err := data.AppendAudit(ctx, tx, "android.policy.delivered",
+			fmt.Sprintf("%s/policies/%s rules:%d settings:%d judged_only:%d", b.Name, own.id, len(rules), len(cfg), len(undelivered))); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE android_enterprises SET personal_policy_at = now()`); err != nil {
 		return nil, err
 	}
-	body, undelivered := Translate(rules)
-	if err := p.ApplyPolicy(ctx, b.Name, PolicyID, body); err != nil {
-		return nil, err
+	return judged, nil
+}
+
+// PolicyFor is the Google policy an enrolment token for a phone of this
+// ownership should name. A work-profile token needs the personal policy to
+// exist at Google first, so the first one delivers it.
+func PolicyFor(ctx context.Context, tx *data.Tx, p Provider, b Binding, ownership string) (string, error) {
+	if ownership == "personal" && b.PersonalPolicyAt == nil {
+		if _, err := DeliverPolicy(ctx, tx, p); err != nil {
+			return "", err
+		}
 	}
-	return undelivered, data.AppendAudit(ctx, tx, "android.policy.delivered",
-		fmt.Sprintf("%s rules:%d judged_only:%d", b.PolicyName(), len(rules), len(undelivered)))
+	return b.PolicyNameFor(ownership), nil
 }
 
 // SyncResult is the in-vs-out block for one sync.
@@ -193,11 +259,16 @@ func Sync(ctx context.Context, tx *data.Tx, p Provider, now time.Time) (SyncResu
 	// What Google was given to enforce, for the one inference ReportFrom
 	// makes. Re-derived here rather than remembered, so it is the policy
 	// as it stands.
-	rules, _, err := policy.EffectiveFor(ctx, tx, "android", "company")
+	rules, cfg, _, err := Effective(ctx, tx, "company")
 	if err != nil {
 		return res, err
 	}
-	delivered, _ := Translate(rules)
+	delivered, _ := TranslateWith(rules, cfg)
+	prules, pcfg, _, err := Effective(ctx, tx, "personal")
+	if err != nil {
+		return res, err
+	}
+	deliveredPersonal, _ := TranslateWith(prules, pcfg)
 
 	for _, d := range devices {
 		if d.State == "DELETED" || d.Serial == "" {
@@ -239,7 +310,12 @@ func Sync(ctx context.Context, tx *data.Tx, p Provider, now time.Time) (SyncResu
 		if d.LastReportAt != nil {
 			reportedAt = *d.LastReportAt
 		}
-		if _, err := policy.ApplyAt(ctx, tx, id, ReportFrom(d, delivered), reportedAt, now); err != nil {
+		// A phone is judged against the policy it was actually given.
+		given := delivered
+		if strings.HasSuffix(d.PolicyName, "/policies/"+PolicyIDPersonal) {
+			given = deliveredPersonal
+		}
+		if _, err := policy.ApplyAt(ctx, tx, id, ReportFrom(d, given), reportedAt, now); err != nil {
 			return res, err
 		}
 		res.Judged++

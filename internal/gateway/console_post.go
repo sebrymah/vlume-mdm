@@ -291,6 +291,15 @@ func (g *Gateway) consoleRevokeEnrolment(w http.ResponseWriter, r *http.Request,
 
 func (g *Gateway) consoleSavePolicy(w http.ResponseWriter, r *http.Request, res Resolution) {
 	var undelivered []string
+	body := []byte(r.FormValue("rules"))
+	if r.FormValue("guided") == "1" {
+		b, berr := guidedBody(r)
+		if berr != nil {
+			back(w, r, "/policies", "That policy was not saved. "+berr.Error())
+			return
+		}
+		body = b
+	}
 	err := g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),
 		func(ctx context.Context, tx *data.Tx) error {
 			_, serr := policy.Save(ctx, tx, policy.SaveInput{
@@ -299,7 +308,7 @@ func (g *Gateway) consoleSavePolicy(w http.ResponseWriter, r *http.Request, res 
 					OSFamily:  r.FormValue("os_family"),
 					Ownership: r.FormValue("ownership"),
 				},
-				Body:      []byte(r.FormValue("rules")),
+				Body:      body,
 				CreatedBy: res.Subject,
 				Stage:     stageFromForm(r),
 			})
@@ -324,6 +333,53 @@ func (g *Gateway) consoleSavePolicy(w http.ResponseWriter, r *http.Request, res 
 			strings.Join(undelivered, ", ") + "."
 	}
 	back(w, r, "/policies", msg)
+}
+
+// consoleAddFromLibrary adds a ready-made policy in one click. It is saved
+// exactly as if the person had written it, under its own title, and is theirs
+// to change; if a policy of that name is already in place nothing is added.
+func (g *Gateway) consoleAddFromLibrary(w http.ResponseWriter, r *http.Request, res Resolution) {
+	t, ok := policy.LibraryByKey(r.PathValue("key"))
+	if !ok {
+		back(w, r, "/policies", "There is no ready-made policy by that name.")
+		return
+	}
+	var undelivered []string
+	already := false
+	err := g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),
+		func(ctx context.Context, tx *data.Tx) error {
+			live, lerr := policy.Active(ctx, tx)
+			if lerr != nil {
+				return lerr
+			}
+			for _, p := range live {
+				if p.Name == t.Title {
+					already = true
+					return nil
+				}
+			}
+			if _, serr := policy.Save(ctx, tx, policy.SaveInput{
+				Name: t.Title, Scope: t.Scope, Body: []byte(t.Body), CreatedBy: res.Subject,
+			}); serr != nil {
+				return serr
+			}
+			var derr error
+			undelivered, derr = g.deliverAndroidPolicy(ctx, tx)
+			return derr
+		})
+	switch {
+	case already:
+		back(w, r, "/policies", "That policy is already added. Change it from the list.")
+	case err != nil:
+		_, msg := policyStatusFor(err)
+		back(w, r, "/policies", "That policy was not added. "+msg)
+	default:
+		msg := "Added \"" + t.Title + "\". It applies from the next report, and you can change it any time."
+		if len(undelivered) > 0 {
+			msg += " On Android, judged on sync rather than enforced on the device: " + strings.Join(undelivered, ", ") + "."
+		}
+		back(w, r, "/policies", msg)
+	}
 }
 
 func (g *Gateway) consoleRetirePolicy(w http.ResponseWriter, r *http.Request, res Resolution) {

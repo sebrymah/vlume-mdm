@@ -33,6 +33,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"platform/internal/catalog"
 )
 
 // MaxReportAge is how long a report stays good for.
@@ -192,10 +194,19 @@ const (
 	FailQuarantine = "quarantine"
 )
 
+// ConfigKey is the third reserved key in a policy body: the settings the
+// policy applies to a device, from the catalogue for its operating system
+// (internal/catalog). The rules judge a device; the config changes it.
+const ConfigKey = "config"
+
 // Settings is what a policy body says beyond its rules.
 type Settings struct {
 	OnFailure string
 	Remediate bool
+	// Config is what the policy sets on a device, checked against the
+	// catalogue. Which system it is for is checked when the policy is saved,
+	// because the body does not say.
+	Config catalog.Values
 }
 
 // ParseBody reads a policy body: the rules, and what failing them means.
@@ -221,6 +232,19 @@ func ParseBody(from string, body []byte) (Rules, Settings, error) {
 			return nil, Settings{}, fmt.Errorf("%w: %s takes true or false", ErrBadValue, RemediateKey)
 		}
 		delete(raw, RemediateKey)
+	}
+
+	if v, ok := raw[ConfigKey]; ok {
+		var cfgRaw map[string]json.RawMessage
+		if err := json.Unmarshal(v, &cfgRaw); err != nil {
+			return nil, Settings{}, fmt.Errorf("%w: %s is an object of settings", ErrBadValue, ConfigKey)
+		}
+		cfg, err := catalog.Parse(cfgRaw)
+		if err != nil {
+			return nil, Settings{}, fmt.Errorf("policy: %w", err)
+		}
+		set.Config = cfg
+		delete(raw, ConfigKey)
 	}
 
 	out := Rules{}

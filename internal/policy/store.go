@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"platform/internal/catalog"
 	"platform/internal/data"
 	"platform/internal/notify"
 )
@@ -29,12 +30,14 @@ var (
 )
 
 type Policy struct {
-	ID        uuid.UUID
-	Name      string
-	Version   int
-	Active    bool
-	Scope     Scope
-	Rules     Rules
+	ID      uuid.UUID
+	Name    string
+	Version int
+	Active  bool
+	Scope   Scope
+	Rules   Rules
+	// Config is what the policy sets on a device (internal/catalog).
+	Config    catalog.Values
 	Body      []byte
 	CreatedBy string
 	CreatedAt time.Time
@@ -161,7 +164,7 @@ func scan(rows pgx.Rows) ([]Policy, error) {
 			return nil, fmt.Errorf("policy %s is stored in a form this version cannot read: %w",
 				p.Label(), err)
 		}
-		p.Rules, p.OnFailure, p.Remediate = rules, set.OnFailure, set.Remediate
+		p.Rules, p.OnFailure, p.Remediate, p.Config = rules, set.OnFailure, set.Remediate, set.Config
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -308,7 +311,11 @@ func Save(ctx context.Context, tx *data.Tx, in SaveInput) (Policy, error) {
 	}
 	// Parsed before it is stored, so an unknown rule name is refused at the
 	// point someone typed it rather than discovered by the engine later.
-	if _, err := Parse(in.Name, in.Body); err != nil {
+	_, parsed, err := ParseBody(in.Name, in.Body)
+	if err != nil {
+		return Policy{}, err
+	}
+	if err := checkConfig(in.Scope, parsed.Config); err != nil {
 		return Policy{}, err
 	}
 
@@ -346,7 +353,7 @@ func Save(ctx context.Context, tx *data.Tx, in SaveInput) (Policy, error) {
 		osFamily  = nullable(in.Scope.OSFamily)
 		ownership = nullable(in.Scope.Ownership)
 	)
-	err := tx.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO policies
 		  (tenant_id, name, version, body, scope_os_family, scope_ownership, active, created_by,
 		   rollout_percent, rollout_tag)
@@ -360,7 +367,7 @@ func Save(ctx context.Context, tx *data.Tx, in SaveInput) (Policy, error) {
 	p.Scope = in.Scope
 	var set Settings
 	p.Rules, set, _ = ParseBody(p.Label(), p.Body)
-	p.OnFailure, p.Remediate = set.OnFailure, set.Remediate
+	p.OnFailure, p.Remediate, p.Config = set.OnFailure, set.Remediate, set.Config
 
 	if p.Rolling() {
 		return p, data.AppendAudit(ctx, tx, "policy.stage", "policy:"+p.Label()+" "+p.StageWords())
@@ -933,7 +940,7 @@ func TemplateByKey(key string) (Template, bool) {
 			return t, true
 		}
 	}
-	return Template{}, false
+	return LibraryByKey(key)
 }
 
 func toApps(in []App) []data.App {

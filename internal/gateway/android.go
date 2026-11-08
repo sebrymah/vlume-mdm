@@ -268,9 +268,13 @@ func (g *Gateway) consoleAndroidToken(w http.ResponseWriter, r *http.Request, re
 			if !bound {
 				return android.ErrNotBound
 			}
+			pn, perr := android.PolicyFor(ctx, tx, g.android, b, ownership)
+			if perr != nil {
+				return perr
+			}
 			var terr error
 			tok, terr = g.android.CreateEnrollmentToken(ctx, b.Name, android.TokenInput{
-				PolicyName: b.PolicyName(), User: assignedTo, Lifetime: 7 * 24 * time.Hour, OneTime: true,
+				PolicyName: pn, User: assignedTo, Lifetime: 7 * 24 * time.Hour, OneTime: true,
 				PersonalUsage: ownership == "personal",
 			})
 			if terr != nil {

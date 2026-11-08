@@ -256,6 +256,19 @@
   <p class="sub">No policy applies to this device, so nothing is required of it.</p>
   {{end}}
 
+  {{if .ConfigLines}}
+  <p class="sub"><strong>What this device is told to do</strong>, from the policies that apply to it. Where several ask for the same setting the strictest wins.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Section</th><th>Setting</th><th>Value</th><th>Asked for by</th></tr></thead>
+    <tbody>
+    {{range .ConfigLines}}<tr><td>{{.Section}}</td><td>{{.Label}}</td><td>{{.Value}}</td><td>{{.From}}</td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{if eq .Device.OSFamily "windows"}}<p class="sub" style="font-size:12px">A Windows computer is not sent these yet: Windows enrolment is not built. They are what it will be sent.</p>{{end}}
+  {{end}}
+
 
   <h2>Commands</h2>
   {{if .Commands}}

@@ -25,6 +25,7 @@ import (
 	"platform/internal/android"
 	"platform/internal/authz"
 	"platform/internal/branding"
+	"platform/internal/catalog"
 	"platform/internal/command"
 	"platform/internal/data"
 	"platform/internal/enrol"
@@ -101,6 +102,17 @@ type page struct {
 	// empty table.
 	Compliance *policy.Compliance
 	Requires   []string
+	// ConfigLines is what the device is told to do beyond what it is judged
+	// by: the merged settings of the policies that apply to it.
+	ConfigLines []ConfigLine
+	// The policies page: a guided editor, the ready-made policies, and which
+	// of them are already in place.
+	Form      *PolicyForm
+	Library   []policy.Template
+	LibraryOS []LibraryGroup
+	AddedKeys map[string]bool
+	OSFilter  string
+	OSTabs    []OSTab
 
 	Notify *Notifications
 
@@ -331,7 +343,19 @@ func (c *Console) Device(w http.ResponseWriter, r *http.Request, s Session) {
 				return perr
 			}
 			p.Requires = rules.Describe()
-			_ = applied
+			if d.OSFamily == "android" || d.OSFamily == "windows" {
+				cfg := policy.MergeConfig(applied)
+				if d.OSFamily == "android" {
+					// The device is given the Google policy for its ownership, which
+					// leaves out what does not exist for its kind of phone.
+					for key := range cfg {
+						if s, ok := catalog.Lookup(key); ok && s.For != "all" && s.For != d.Ownership {
+							delete(cfg, key)
+						}
+					}
+				}
+				p.ConfigLines = ConfigLines(d.OSFamily, cfg, policy.WhoAsked(applied, cfg))
+			}
 			c, found, cerr := policy.Of(ctx, tx, id, time.Now().UTC())
 			if cerr != nil {
 				return cerr
@@ -462,6 +486,28 @@ func (c *Console) EnrolmentCreated(w http.ResponseWriter, r *http.Request, s Ses
 // Policies lists what the tenant requires, live versions and superseded
 // ones together. The old versions are the answer to "what did we require in
 // March", so they are on the page rather than in a backup.
+// LibraryGroup is the ready-made policies for one system, with which of them
+// are already in place.
+type LibraryGroup struct {
+	OS     string
+	OSName string
+	Items  []LibraryItem
+}
+
+// LibraryItem is one ready-made policy.
+type LibraryItem struct {
+	policy.Template
+	Added   bool
+	Applies string
+}
+
+// OSTab is one choice of the filter above the list of policies.
+type OSTab struct {
+	OS     string
+	Name   string
+	Active bool
+}
+
 func (c *Console) Policies(w http.ResponseWriter, r *http.Request, s Session) {
 	c.render(w, r, s, "policies.html", "/policies", "Policies",
 		func(ctx context.Context, tx *data.Tx, p *page) error {
@@ -469,13 +515,64 @@ func (c *Console) Policies(w http.ResponseWriter, r *http.Request, s Session) {
 			if err != nil {
 				return err
 			}
-			p.Policies = ps
+			q := r.URL.Query()
+			filter := q.Get("os")
+			p.OSFilter = filter
+			for _, tab := range []OSTab{{"", "All", false}, {"android", "Android", false}, {"windows", "Windows", false},
+				{"ios", "iOS", false}, {"macos", "macOS", false}} {
+				tab.Active = tab.OS == filter
+				p.OSTabs = append(p.OSTabs, tab)
+			}
+			// The list shows one system at a time when asked.
+			for _, pol := range ps {
+				if filter == "" || pol.Scope.OSFamily == filter || (pol.Scope.OSFamily == "" && filter != "") {
+					p.Policies = append(p.Policies, pol)
+				}
+			}
 			p.RuleKinds = policy.Kinds()
 			p.Templates = policy.Templates()
-			// A template chosen from the list fills the form; nothing is
-			// saved until the person presses save under their own name.
-			if t, ok := policy.TemplateByKey(r.URL.Query().Get("template")); ok {
-				p.Template = &t
+
+			// What is already in place, by name, so a ready-made policy that
+			// is already added says so rather than offering to add it twice.
+			live := map[string]policy.Policy{}
+			for _, pol := range ps {
+				if pol.Active {
+					live[pol.Name] = pol
+				}
+			}
+			p.AddedKeys = map[string]bool{}
+			for _, os := range catalog.Systems() {
+				if filter != "" && filter != os {
+					continue
+				}
+				g := LibraryGroup{OS: os, OSName: OSName(os)}
+				for _, t := range policy.LibraryFor(os) {
+					_, added := live[t.Title]
+					g.Items = append(g.Items, LibraryItem{Template: t, Added: added, Applies: t.Scope.Describe()})
+				}
+				p.LibraryOS = append(p.LibraryOS, g)
+			}
+
+			// The guided editor: a new policy for a system, a ready-made one
+			// opened to change before it is saved, or an existing one.
+			switch {
+			case q.Get("edit") != "":
+				if pol, ok := live[q.Get("edit")]; ok && pol.Scope.OSFamily != "" {
+					p.Form = BuildPolicyForm(pol.Scope.OSFamily, pol.Name, pol.Scope, pol.Rules,
+						policy.Settings{OnFailure: pol.OnFailure, Remediate: pol.Remediate, Config: pol.Config}, "", true)
+				}
+			case q.Get("template") != "":
+				// A template chosen from the list fills the form; nothing is
+				// saved until the person presses save under their own name.
+				if t, ok := policy.TemplateByKey(q.Get("template")); ok {
+					p.Template = &t
+					rules, set, perr := policy.ParseBody(t.Title, []byte(t.Body))
+					if perr == nil && (t.Scope.OSFamily == "android" || t.Scope.OSFamily == "windows") {
+						p.Form = BuildPolicyForm(t.Scope.OSFamily, t.Title, t.Scope, rules, set, t.Why, false)
+					}
+				}
+			case q.Get("new") == "android" || q.Get("new") == "windows":
+				p.Form = BuildPolicyForm(q.Get("new"), "", policy.Scope{OSFamily: q.Get("new")}, nil, policy.Settings{}, "", false)
 			}
 			return nil
 		})

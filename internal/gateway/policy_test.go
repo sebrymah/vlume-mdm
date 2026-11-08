@@ -580,7 +580,7 @@ func TestEveryTemplateIsAPolicyTheEngineUnderstands(t *testing.T) {
 	}
 	// The page offers them and fills the form from one.
 	_, page := getHTML(t, f, hostA, "/policies?template=phones", "a-itadmin")
-	if !strings.Contains(page, "Start from a template") || !strings.Contains(page, `"on_failure": "quarantine"`) {
+	if !strings.Contains(page, "write the rules as JSON") || !strings.Contains(page, `"on_failure": "quarantine"`) {
 		t.Fatal("the template did not fill the form")
 	}
 }

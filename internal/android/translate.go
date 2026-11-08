@@ -1,8 +1,10 @@
 package android
 
 import (
+	"encoding/json"
 	"sort"
 
+	"platform/internal/catalog"
 	"platform/internal/policy"
 )
 
@@ -16,6 +18,40 @@ type Policy struct {
 	// StatusReportingSettings asks Google to report the facts the engine
 	// judges from. Without them a device says nothing and is unknown.
 	StatusReportingSettings StatusReporting `json:"statusReportingSettings"`
+
+	// Extra is every other setting the policy carries (internal/catalog):
+	// camera, apps, wallpaper, USB and the rest. It is written into the same
+	// JSON object as the fields above, deep-merged, so a nested field such as
+	// passwordRequirements keeps both what the rules gave it and what the
+	// settings did.
+	Extra map[string]any `json:"-"`
+}
+
+// MarshalJSON writes the typed fields and Extra as one object.
+func (p Policy) MarshalJSON() ([]byte, error) {
+	type plain Policy
+	b, err := json.Marshal(plain(p))
+	if err != nil || len(p.Extra) == 0 {
+		return b, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	deepMerge(m, p.Extra)
+	return json.Marshal(m)
+}
+
+func deepMerge(dst, src map[string]any) {
+	for k, v := range src {
+		if sm, ok := v.(map[string]any); ok {
+			if dm, ok := dst[k].(map[string]any); ok {
+				deepMerge(dm, sm)
+				continue
+			}
+		}
+		dst[k] = v
+	}
 }
 
 type PasswordRequirements struct {
@@ -38,37 +74,41 @@ type StatusReporting struct {
 // policy is told which rules are judged rather than enforced. A policy that
 // quietly enforced less than it said would be the same lie as a rule name
 // nobody understood.
-func Translate(rules policy.Rules) (Policy, []string) {
+func Translate(rules policy.Rules) (Policy, []string) { return TranslateWith(rules, nil) }
+
+// TranslateWith is Translate with the settings the policies carry beside
+// their rules (internal/catalog).
+//
+// The rules and the settings are put on one footing before anything is sent:
+// each deliverable rule is turned into the setting that says the same thing,
+// and the two sets are merged, strictest wins. A rule that asks for a
+// passcode of eight and a setting that asks for twelve gives twelve; a
+// setting of six under a rule of eight gives eight, so the phone is never
+// handed a looser value than the one it is judged against.
+func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 	out := Policy{StatusReportingSettings: StatusReporting{
 		DeviceSettingsEnabled: true, SoftwareInfoEnabled: true, HardwareStatusEnabled: true,
 		ApplicationReportsEnabled: true,
 	}}
 	var undelivered []string
+	fromRules := catalog.Values{}
 	for kind, r := range rules {
 		switch kind {
 		case policy.PasscodeRequired:
 			if r.Bool {
-				if out.PasswordRequirements == nil {
-					out.PasswordRequirements = &PasswordRequirements{}
-				}
-				if out.PasswordRequirements.PasswordQuality == "" {
-					out.PasswordRequirements.PasswordQuality = "SOMETHING"
-				}
+				fromRules["android.password_quality"] = "SOMETHING"
 			}
 		case policy.PasscodeMinLength:
-			if out.PasswordRequirements == nil {
-				out.PasswordRequirements = &PasswordRequirements{}
-			}
-			out.PasswordRequirements.PasswordMinimumLength = r.Num
+			fromRules["android.password_min_length"] = r.Num
 			// A minimum length only means something for a quality that
 			// has a length.
-			out.PasswordRequirements.PasswordQuality = "NUMERIC"
+			fromRules["android.password_quality"] = "NUMERIC"
 		case policy.DiskEncryptionRequired:
 			if r.Bool {
-				out.EncryptionPolicy = "ENABLED_WITH_PASSWORD"
+				fromRules["android.encryption_required"] = true
 			}
 		case policy.ScreenLockTimeoutMax:
-			out.MaximumTimeToLock = itoa(int64(r.Num) * 1000)
+			fromRules["android.screen_lock_seconds"] = r.Num
 		default:
 			// os_version_min: Google has no "require at least" setting;
 			// the version is reported and judged. firewall_required and
@@ -78,8 +118,97 @@ func Translate(rules policy.Rules) (Policy, []string) {
 			undelivered = append(undelivered, string(kind))
 		}
 	}
+	merged := catalog.Merge(fromRules, cfg)
+
+	// The four settings the engine judges from are typed fields, because
+	// ReportFrom reads them back.
+	if v, ok := merged["android.password_quality"].(string); ok {
+		out.passwords().PasswordQuality = v
+	}
+	if v, ok := merged["android.password_min_length"].(int); ok {
+		out.passwords().PasswordMinimumLength = v
+	}
+	if v, ok := merged["android.screen_lock_seconds"].(int); ok {
+		out.MaximumTimeToLock = itoa(int64(v) * 1000)
+	}
+	if v, _ := merged["android.encryption_required"].(bool); v {
+		out.EncryptionPolicy = "ENABLED_WITH_PASSWORD"
+	}
+
+	// Everything else goes where the catalogue says.
+	typed := map[string]bool{"android.password_quality": true, "android.password_min_length": true,
+		"android.screen_lock_seconds": true, "android.encryption_required": true}
+	for key, v := range merged {
+		if typed[key] {
+			continue
+		}
+		s, ok := catalog.Lookup(key)
+		if !ok || s.OS != "android" {
+			continue
+		}
+		if s.Kind == catalog.Apps {
+			out.addApps(v.([]catalog.AppRule))
+			continue
+		}
+		sent, include := s.Send(v)
+		if !include {
+			continue
+		}
+		out.set(s.Path, sent)
+	}
 	sort.Strings(undelivered)
 	return out, undelivered
+}
+
+func (p *Policy) passwords() *PasswordRequirements {
+	if p.PasswordRequirements == nil {
+		p.PasswordRequirements = &PasswordRequirements{}
+	}
+	return p.PasswordRequirements
+}
+
+// set writes a value at a dotted path in Extra.
+func (p *Policy) set(path string, v any) {
+	if p.Extra == nil {
+		p.Extra = map[string]any{}
+	}
+	m := p.Extra
+	parts := splitPath(path)
+	for _, part := range parts[:len(parts)-1] {
+		next, ok := m[part].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			m[part] = next
+		}
+		m = next
+	}
+	m[parts[len(parts)-1]] = v
+}
+
+func splitPath(path string) []string {
+	var out []string
+	cur := ""
+	for _, c := range path {
+		if c == '.' {
+			out = append(out, cur)
+			cur = ""
+			continue
+		}
+		cur += string(c)
+	}
+	return append(out, cur)
+}
+
+// addApps turns the apps a policy lists into Google's applications array.
+func (p *Policy) addApps(list []catalog.AppRule) {
+	install := map[string]string{"required": "FORCE_INSTALLED", "available": "AVAILABLE", "blocked": "BLOCKED"}
+	apps := make([]map[string]any, 0, len(list))
+	for _, a := range list {
+		apps = append(apps, map[string]any{"packageName": a.Package, "installType": install[a.Install]})
+	}
+	if len(apps) > 0 {
+		p.set("applications", apps)
+	}
 }
 
 func itoa(n int64) string {

@@ -212,8 +212,12 @@ func (g *Gateway) joinSubmit(w http.ResponseWriter, r *http.Request) {
 		if !bound {
 			return android.ErrNotBound
 		}
+		pn, e := android.PolicyFor(ctx, tx, g.android, b, used.Ownership)
+		if e != nil {
+			return e
+		}
 		tok, e = g.android.CreateEnrollmentToken(ctx, b.Name, android.TokenInput{
-			PolicyName: b.PolicyName(), User: used.AssignedTo, Lifetime: android.JoinTokenLife, OneTime: true,
+			PolicyName: pn, User: used.AssignedTo, Lifetime: android.JoinTokenLife, OneTime: true,
 			PersonalUsage: used.Ownership == "personal",
 		})
 		if e != nil {

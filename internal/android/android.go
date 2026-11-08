@@ -73,7 +73,10 @@ type EnrollmentToken struct {
 // the ones the compliance engine can judge from; anything else Google
 // knows stays with Google.
 type Device struct {
-	Name            string // enterprises/X/devices/Y
+	Name string // enterprises/X/devices/Y
+	// PolicyName is the Google policy the phone was given, which says
+	// whether it is judged as a company phone or a work profile.
+	PolicyName      string
 	EnrollmentToken string // the token's name, to match who it was for
 	Serial          string
 	Model           string

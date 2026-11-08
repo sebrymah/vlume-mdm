@@ -104,8 +104,12 @@ func (g *Gateway) consoleSelfEnrolStart(w http.ResponseWriter, r *http.Request, 
 				problem = "You have asked for several codes today already. Use the last one, or try again tomorrow."
 				return nil
 			}
+			pn, err := android.PolicyFor(ctx, tx, g.android, b, ownership)
+			if err != nil {
+				return err
+			}
 			tok, err = g.android.CreateEnrollmentToken(ctx, b.Name, android.TokenInput{
-				PolicyName: b.PolicyName(), User: email, Lifetime: android.SelfLifetime, OneTime: true,
+				PolicyName: pn, User: email, Lifetime: android.SelfLifetime, OneTime: true,
 				PersonalUsage: ownership == "personal",
 			})
 			if err != nil {

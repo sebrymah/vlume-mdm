@@ -1551,6 +1551,72 @@ GRANT SELECT ON devices TO mdm_operator;"
     "		UPDATE join_links SET uses = uses + 1, failed_count = 0, failed_since = NULL"
   ;;
 
+--break-configsystem)
+  # A policy may carry another system's settings.
+  echo "==> NEGATIVE CONTROL: a policy for one system may carry another system's settings"
+  patch internal/policy/config.go \
+    "	if scope.OSFamily != sys {" \
+    "	if false && scope.OSFamily != sys {"
+  ;;
+
+--break-configowner)
+  # A setting that cannot reach a kind of phone is accepted on a policy for that kind.
+  echo "==> NEGATIVE CONTROL: a company-only setting is accepted on a personal policy"
+  patch internal/policy/config.go \
+    "		if s.For == \"company\" && scope.Ownership == \"personal\" {" \
+    "		if false && s.For == \"company\" && scope.Ownership == \"personal\" {"
+  ;;
+
+--break-configfilter)
+  # A work profile is sent company-only settings and a company phone work-profile ones.
+  echo "==> NEGATIVE CONTROL: settings are not filtered by kind of phone"
+  patch internal/android/store.go \
+    "s.For != \"all\" && s.For != ownership {" \
+    "s.For != \"all\" && s.For != ownership && false {"
+  ;;
+
+--break-configstrict)
+  # The longer passcode loses: the looser value wins a merge.
+  echo "==> NEGATIVE CONTROL: the lower of two minimums wins"
+  patch internal/catalog/catalog.go \
+    "		if b.(int) > a.(int) {" \
+    "		if b.(int) < a.(int) {"
+  ;;
+
+--break-configrules)
+  # The rules a policy judges by are not part of what a phone is given.
+  echo "==> NEGATIVE CONTROL: a rule stricter than a setting is not delivered"
+  patch internal/android/translate.go \
+    "	merged := catalog.Merge(fromRules, cfg)" \
+    "	merged := catalog.Merge(cfg)"
+  ;;
+
+--break-configunknown)
+  # An unknown setting is skipped instead of refused.
+  echo "==> NEGATIVE CONTROL: an unknown setting is silently ignored"
+  patch internal/catalog/catalog.go \
+    "			return nil, fmt.Errorf(\"%w: %q\", ErrUnknown, key)" \
+    "			continue"
+  ;;
+
+--break-libraryonce)
+  # A ready-made policy can be added twice.
+  echo "==> NEGATIVE CONTROL: a ready-made policy is added again"
+  patch internal/gateway/console_post.go \
+    "				if p.Name == t.Title {" \
+    "				if false && p.Name == t.Title {"
+  ;;
+
+--break-personalpolicy)
+  # A work-profile phone is enrolled onto the company policy.
+  echo "==> NEGATIVE CONTROL: a personal phone is given the company policy"
+  patch internal/android/store.go \
+    "	if ownership == \"personal\" {
+" \
+    "	if false {
+"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1609,7 +1675,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

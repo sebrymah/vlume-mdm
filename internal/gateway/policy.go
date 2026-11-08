@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"platform/internal/catalog"
 	"platform/internal/data"
 	"platform/internal/policy"
 )
@@ -464,7 +465,8 @@ func policyStatusFor(err error) (int, string) {
 	case err == nil:
 		return http.StatusOK, ""
 	case errors.Is(err, policy.ErrUnknownRule), errors.Is(err, policy.ErrBadValue),
-		errors.Is(err, policy.ErrBadScope), errors.Is(err, policy.ErrBadName):
+		errors.Is(err, policy.ErrBadScope), errors.Is(err, policy.ErrBadName),
+		errors.Is(err, policy.ErrConfigScope), errors.Is(err, catalog.ErrUnknown), errors.Is(err, catalog.ErrBadValue):
 		// These are things a person typed, so the message is the one they
 		// need rather than a generic refusal.
 		return http.StatusBadRequest, err.Error()

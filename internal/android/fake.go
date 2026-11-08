@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,10 @@ type FakeGoogle struct {
 	// FailTokens makes the next enrolment-token requests fail, the way Google
 	// does on a bad day, so a test can see what the platform does about it.
 	FailTokens bool
+	// PolicyBodies keeps the raw JSON of each policy delivered, by name, so a
+	// test can read exactly what Google was sent, including the settings the
+	// typed Policy does not model.
+	PolicyBodies map[string]json.RawMessage
 }
 
 type fakeEnterprise struct {
@@ -123,7 +128,7 @@ func (f *FakeGoogle) Enrol(tokenValue, serial, model, androidVersion string, sec
 		for name, t := range e.tokens {
 			if t.value == tokenValue {
 				dn := e.name + "/devices/" + randomID(8)
-				d := wireDevice{Name: dn, State: "ACTIVE", EnrollmentTokenName: name,
+				d := wireDevice{Name: dn, State: "ACTIVE", EnrollmentTokenName: name, PolicyName: t.policy,
 					LastStatusReport: time.Now().UTC().Format(time.RFC3339), PolicyCompliant: true}
 				d.HardwareInfo.SerialNumber, d.HardwareInfo.Model = serial, model
 				d.SoftwareInfo.AndroidVersion = androidVersion
@@ -258,12 +263,17 @@ func (f *FakeGoogle) serve(w http.ResponseWriter, r *http.Request) {
 			refuse(404, "no such enterprise")
 			return
 		}
+		rawBody, err := io.ReadAll(r.Body)
 		var body Policy
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err != nil || json.Unmarshal(rawBody, &body) != nil {
 			refuse(400, "bad policy body")
 			return
 		}
 		f.Policies[path] = body
+		if f.PolicyBodies == nil {
+			f.PolicyBodies = map[string]json.RawMessage{}
+		}
+		f.PolicyBodies[path] = rawBody
 		write(200, map[string]any{"name": path})
 
 	case r.Method == "POST" && strings.HasSuffix(path, "/enrollmentTokens"):

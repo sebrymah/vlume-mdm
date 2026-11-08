@@ -210,6 +210,14 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-joincancel    # let a cancelled join link keep working, expect a FAILURE
 ./run_go.sh --break-joinrace      # judge guesses without locking the link, so a flood is all tried, expect a FAILURE
 ./run_go.sh --break-joinreset     # let a success reset the wrong-guess count, expect a FAILURE
+./run_go.sh --break-configsystem  # let a policy carry another system's settings, expect a FAILURE
+./run_go.sh --break-configowner   # accept a company-only setting on a personal policy, expect a FAILURE
+./run_go.sh --break-configfilter  # send a work profile company-only settings, expect a FAILURE
+./run_go.sh --break-configstrict  # let the looser of two minimums win, expect a FAILURE
+./run_go.sh --break-configrules   # leave a stricter rule out of what a phone is given, expect a FAILURE
+./run_go.sh --break-configunknown # skip an unknown setting instead of refusing it, expect a FAILURE
+./run_go.sh --break-libraryonce   # add a ready-made policy twice, expect a FAILURE
+./run_go.sh --break-personalpolicy # enrol a work-profile phone onto the company policy, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -575,6 +583,98 @@ challenge would fail every sign-in test rather than quietly getting weaker.
 
 The gateway's sign-in tests drive it with a real `http.Client`, a real cookie
 jar and redirect following. The only thing simulated is DNS.
+
+## Policies by operating system
+
+A policy used to be one shape for every system, with seven rules. That hid what
+each system can actually do: Android can lock the wallpaper and block USB,
+Windows can set BitLocker and Defender, and neither list is the other's. A policy
+now belongs to **one** system and offers that system's own settings, grouped in
+sections.
+
+### What a policy holds
+
+- **Rules**: what it *judges* a device by (passcode, encryption, screen lock,
+  minimum version, firewall, rooted). Unchanged. A device that does not say is
+  unknown, never a pass.
+- **Settings** (new, the `config` object in the body): what it *changes* on a
+  device, from the catalogue for its system (`internal/catalog`). Android has 41
+  across password and lock screen, screen and display, device features, network,
+  apps, updates, work-profile separation and messages; Windows has 24 across
+  sign-in, encryption and security, device features, desktop and display, updates
+  and privacy. Each has a type, a range, a plain sentence, a direction for
+  "stricter", and the exact Google field (Android) or Windows CSP address it
+  becomes.
+
+The catalogue is fixed, not an expression language. An unknown setting name, a
+value of the wrong type, a number out of range, a package name that is not one,
+or a Windows picture address that is not https is refused where it is typed
+(`--break-configunknown`).
+
+### The checks on a policy
+
+A policy that carries settings must name its system, every setting must be that
+system's (`--break-configsystem`), and a setting that only reaches company phones
+is refused on a policy for personal ones, and the other way round, because it
+would be saved, shown and never reach anything (`--break-configowner`).
+
+### One click, then yours
+
+The **ready-made policies** (6 for Android, 4 for Windows) are ordinary policies
+added in one click, each held to the same checks by a test, and from then on
+changed like any other. Adding one twice is refused (`--break-libraryonce`).
+Android: secure baseline; company phone, locked down; personal phone with a work
+profile; field agent phone; no camera, no screenshots; keep everything up to date.
+Windows: secure baseline; locked-down laptop; steady updates; privacy. The page
+is filtered by system (All, Android, Windows, iOS, macOS), and a policy is
+written in a guided form made from the catalogue, with its current values filled
+in when it is changed. The old JSON editor stays, under Advanced, for iOS and
+macOS, which have no settings list yet.
+
+### How several policies combine
+
+The strictest value of each setting wins, in a fixed order, so the same policies
+always give the same answer: a longer passcode, a shorter lock, a switch that is
+on beats one that is off, a later option in a choice is the stricter one, and apps
+are joined with the strictest instruction for one app (blocked, then required,
+then available). A message has no stricter side: the policy first by name wins.
+The rules and the settings are put on one footing before anything is sent, so a
+phone is never handed a looser value than the one it is judged against
+(`--break-configstrict`, `--break-configrules`).
+
+### What Google is sent
+
+Two Google policies per organisation, because a company phone and a work profile
+are not given the same things: `default` for company phones, `personal` for work
+profiles. Each gets only the settings that exist for its kind of phone, because a
+field Google does not honour for a kind of phone is the kind of thing it can
+refuse a whole policy over (`--break-configfilter`). Every enrolment token, from
+an administrator, from self-service or from a join link, names the policy for the
+phone it is for (`--break-personalpolicy`). This also fixes an older gap: a policy
+scoped to personal devices was never delivered to anything.
+
+Each device's page lists what it is told to do and which policies asked for each
+setting.
+
+### What is not true yet
+
+- **Windows:** nothing is delivered, because a Windows computer cannot be enrolled.
+  Settings are stored with the policy; the page and the device page say so.
+- **iOS and macOS** have no settings list. Their policies are rules only.
+- **Already-enrolled work-profile phones** stay on the company policy until they
+  enrol again. Moving a phone between Google policies needs a call this does not
+  make yet, and it is needed for groups too.
+- **Apps** can be pushed, offered or blocked on Android by package name. Windows
+  apps wait for a Windows agent.
+- **Written from Google's reference, tested against the fake.** Several fields
+  have minimum Android versions or work only in one management mode, and some,
+  such as `usbFileTransferDisabled`, `wifiConfigDisabled`, `tetheringConfigDisabled`
+  and `statusBarDisabled`, are marked deprecated in favour of newer fields. A
+  policy Google refuses is a policy that was not saved, so a field a phone cannot
+  honour is found when the policy is saved. The first real phone is the real test.
+- **Groups are the next step.** A policy still applies by system and ownership. A
+  device group, filled from a join link, and a policy assigned to a group, are
+  designed but not built.
 
 ## QR codes and self-service enrolment
 

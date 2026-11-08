@@ -65,6 +65,7 @@ func seed(t *testing.T) {
 		`DELETE FROM devices`,
 		`DELETE FROM local_tokens`,
 		`DELETE FROM local_accounts`,
+		`DELETE FROM tenant_enrolment`,
 		`DELETE FROM people`,
 		`DELETE FROM compliance_snapshots`,
 		`DELETE FROM policies`,
@@ -139,6 +140,7 @@ func TestTheDirectoryRoleCannotReachTenantData(t *testing.T) {
 		// change or add to them afterwards.
 		`UPDATE local_accounts SET role = 'super_admin'`,
 		`DELETE FROM local_accounts`,
+		`DELETE FROM tenant_enrolment`,
 		`UPDATE local_tokens SET used_at = NULL`,
 		`INSERT INTO devices (tenant_id, name, serial, os_family)
 		 VALUES ('11111111-1111-1111-1111-111111111111','x','y','macos')`,

@@ -140,6 +140,54 @@
   </script>
   {{end}}
 
+  {{if and $.CanEnrol .Bound}}
+  <form method="post" action="/android/self-enrol" class="card" style="margin-bottom:16px">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <p class="k">Let people enrol their own phone</p>
+    <p class="sub" style="margin:0 0 10px">Send everybody <strong>one link</strong>. Each person signs in, gets a
+    code for their own phone, and the phone lands on their page. No token to make for each of them.
+    A person can ask for five codes a day, each lasts an hour and works once, and someone who has left
+    is refused.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:2 1 260px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Who may</span>
+        <select name="mode" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="off" {{if eq .SelfEnrolMode "off"}}selected{{end}}>Nobody (administrators make every token)</option>
+          <option value="personal" {{if eq .SelfEnrolMode "personal"}}selected{{end}}>Everyone, for their own phone (work profile)</option>
+          <option value="any" {{if eq .SelfEnrolMode "any"}}selected{{end}}>Everyone, own phone or a new company phone</option>
+        </select>
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save</button>
+    </div>
+    {{if ne .SelfEnrolMode "off"}}
+    <p class="k" style="margin:14px 0 4px">The link to send everybody</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="self-link" readonly value="{{.SelfEnrolLink}}" onclick="this.select()"
+             style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--page)">
+      <button type="button" id="self-link-copy"
+              style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
+    </div>
+    <p class="sub" style="font-size:12px;margin:6px 0 0">It is the same for everyone. It asks them to sign in first, so it
+    is safe to put in an all-staff email or on the intranet.</p>
+    {{end}}
+  </form>
+  {{if ne .SelfEnrolMode "off"}}
+  <script>
+    (function () {
+      var b = document.getElementById('self-link-copy'), el = document.getElementById('self-link');
+      if (!b || !el) { return; }
+      b.addEventListener('click', function () {
+        el.select();
+        var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); });
+        } else { document.execCommand('copy'); done(); }
+      });
+    })();
+  </script>
+  {{end}}
+  {{end}}
+
   {{if $.CanEnrol}}
   <form method="post" action="/android/tokens" class="card">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">

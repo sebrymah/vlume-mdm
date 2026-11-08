@@ -95,15 +95,22 @@ type TokenRecord struct {
 	ExpiresAt  time.Time
 }
 
-func RecordToken(ctx context.Context, tx *data.Tx, t EnrollmentToken, label, assignedTo, ownership, by string) error {
+// RecordToken writes down a token Google issued. source is who asked for
+// it: "admin" for an administrator, "self" for a person enrolling their own
+// phone. The two are kept apart because the per-person limit counts only
+// the second.
+func RecordToken(ctx context.Context, tx *data.Tx, t EnrollmentToken, label, assignedTo, ownership, by, source string) error {
 	if ownership == "" {
 		ownership = "company"
 	}
+	if source == "" {
+		source = "admin"
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO android_enrollment_tokens
-		  (tenant_id, name, label, assigned_to, ownership, created_by, expires_at)
-		VALUES (app.current_tenant(), $1, $2, $3, $4, $5, $6)`,
-		t.Name, strings.TrimSpace(label), strings.TrimSpace(assignedTo), ownership, by, t.ExpiresAt); err != nil {
+		  (tenant_id, name, label, assigned_to, ownership, created_by, expires_at, source)
+		VALUES (app.current_tenant(), $1, $2, $3, $4, $5, $6, $7)`,
+		t.Name, strings.TrimSpace(label), strings.TrimSpace(assignedTo), ownership, by, t.ExpiresAt, source); err != nil {
 		return err
 	}
 	return data.AppendAudit(ctx, tx, "android.token.created", t.Name+" for:"+assignedTo)

@@ -144,6 +144,7 @@ func newRig(t *testing.T) *rig {
 		`DELETE FROM devices`,
 		`DELETE FROM local_tokens`,
 		`DELETE FROM local_accounts`,
+		`DELETE FROM tenant_enrolment`,
 		`DELETE FROM people`,
 		`DELETE FROM compliance_snapshots`,
 		`DELETE FROM policies`,

@@ -92,3 +92,19 @@ func TestUnknownRoleIsRefusedRatherThanDefaulted(t *testing.T) {
 		}
 	}
 }
+
+// Every role a person can sign in as may enrol their own phone, and nothing
+// else may. The action is narrow because the handler takes the address from
+// the session, so holding it lets a person do one thing, to themselves.
+func TestOnlyPeopleMayEnrolTheirOwnPhone(t *testing.T) {
+	people := map[Role]bool{SuperAdmin: true, ITAdmin: true, SecurityManager: true, Helpdesk: true, Auditor: true, Employee: true}
+	for _, r := range Roles() {
+		if got := Can(r, EnrolOwn); got != people[r] {
+			t.Errorf("%s may enrol their own phone: got %v, want %v", r, got, people[r])
+		}
+	}
+	// Holding it never grants the wider one.
+	if Can(Employee, EnrolDevice) {
+		t.Error("an Employee holds device.enrol, which invites a device for anyone")
+	}
+}

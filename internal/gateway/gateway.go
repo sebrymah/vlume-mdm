@@ -473,6 +473,12 @@ func (g *Gateway) Handler() http.Handler {
 		// scopes the page is the claim, not the route.
 		mux.Handle("GET /me", g.page(authz.ViewOwnDevices, g.console.Me))
 		mux.Handle("POST /me/devices/{id}/lost", g.formPost(authz.ViewOwnDevices, g.consoleReportLost))
+		// Self-service enrolment (0045): one link for everybody, a code for
+		// their own phone. The setting is an administrator's; the page and
+		// the code are for anyone who signs in.
+		mux.Handle("GET /enrol", g.page(authz.EnrolOwn, g.consoleSelfEnrol))
+		mux.Handle("POST /enrol/start", g.formPost(authz.EnrolOwn, g.consoleSelfEnrolStart))
+		mux.Handle("POST /android/self-enrol", g.formPost(authz.EnrolDevice, g.consoleSelfEnrolMode))
 		// Standing a lost report down is the same role set that would act
 		// on it. Reusing device.lock rather than adding an action: the
 		// people who may lock a device in an emergency are the people who

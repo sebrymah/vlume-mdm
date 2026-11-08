@@ -122,6 +122,10 @@ type page struct {
 	// MACs are the device's hardware addresses, what the network's door
 	// knows it by.
 	MACs []string
+	// Self-service enrolment (0045): whether the organisation lets people
+	// enrol their own phone, and the page where they do.
+	SelfEnrolOn bool
+	SelfEnrol   *SelfEnrol
 	// Local sign-in (0044): the tenant keeps its own accounts.
 	LocalMode bool
 	Users     *Users
@@ -174,7 +178,7 @@ func (m MyDevice) NeedsAttention() bool {
 	return m.Compliance == nil || m.Compliance.State != policy.Compliant
 }
 
-func navFor(role authz.Role, active, subject string, localMode bool) []navItem {
+func navFor(role authz.Role, active, subject string, localMode, selfEnrol bool) []navItem {
 	var out []navItem
 	add := func(label, href string, allowed bool) {
 		if allowed {
@@ -185,6 +189,9 @@ func navFor(role authz.Role, active, subject string, localMode bool) []navItem {
 	// an IT admin with a laptop of their own should see it here like anyone
 	// else rather than hunting for it in the fleet list.
 	add("Your devices", "/me", authz.Can(role, authz.ViewOwnDevices))
+	// Only when the organisation has turned it on (0045). Off, the entry is
+	// absent rather than present and refused.
+	add("Enrol my phone", "/enrol", selfEnrol && authz.Can(role, authz.EnrolOwn))
 	add("Dashboard", "/", authz.Can(role, authz.ViewDevices))
 	add("Setup", "/setup", authz.Can(role, authz.ViewDevices))
 	add("Devices", "/devices", authz.Can(role, authz.ViewDevices))
@@ -240,6 +247,11 @@ func (c *Console) render(w http.ResponseWriter, r *http.Request, s Session,
 			return err
 		}
 		p.LocalMode = local
+		mode, err := android.SelfMode(ctx, tx)
+		if err != nil {
+			return err
+		}
+		p.SelfEnrolOn = mode != android.SelfOff
 		if load == nil {
 			return nil
 		}
@@ -249,7 +261,7 @@ func (c *Console) render(w http.ResponseWriter, r *http.Request, s Session,
 		http.Error(w, "could not render the page", http.StatusInternalServerError)
 		return
 	}
-	p.Nav = navFor(s.Role, active, s.Subject, p.LocalMode)
+	p.Nav = navFor(s.Role, active, s.Subject, p.LocalMode, p.SelfEnrolOn)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, name, p); err != nil {
@@ -845,6 +857,10 @@ type Android struct {
 	// better than drawing the wrong thing.
 	NewTokenQRImage template.URL
 	NewTokenQRKind  string
+	// SelfEnrolMode is the setting people-enrol-themselves is in, and
+	// SelfEnrolLink the one address to send everybody.
+	SelfEnrolMode string
+	SelfEnrolLink string
 	// NewTokenMailed is who the link was emailed to; NewTokenMailError
 	// says why it was not, when it was asked for and could not go.
 	NewTokenMailed    string
@@ -862,6 +878,42 @@ func (c *Console) AndroidPage(w http.ResponseWriter, r *http.Request, s Session,
 				return err
 			}
 			p.Android = &a
+			return nil
+		})
+}
+
+// ---------------------------------------------------------- self-enrol
+
+// SelfEnrol is the page where a person gets a code for their own phone.
+type SelfEnrol struct {
+	// Mode is what the organisation allows: off, personal, any.
+	Mode string
+	// Started is true on the one page rendered right after a code was
+	// made. The code is never in a link a person could come back to.
+	Started bool
+	Label   string
+	// Link is Google's enrolment link and QRImage the picture of whichever
+	// payload suits the kind of phone (see enrolQR in the gateway).
+	Link      string
+	QRImage   template.URL
+	QRKind    string
+	Ownership string
+	Expires   time.Time
+	// OnPhone is true when the page was opened on an Android phone, which
+	// can simply follow the link and has no use for a picture of it.
+	OnPhone bool
+}
+
+func (c *Console) SelfEnrolPage(w http.ResponseWriter, r *http.Request, s Session,
+	load func(context.Context, *data.Tx, *SelfEnrol) error) {
+
+	c.render(w, r, s, "selfenrol.html", "/enrol", "Enrol my phone",
+		func(ctx context.Context, tx *data.Tx, p *page) error {
+			var e SelfEnrol
+			if err := load(ctx, tx, &e); err != nil {
+				return err
+			}
+			p.SelfEnrol = &e
 			return nil
 		})
 }

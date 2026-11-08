@@ -32,6 +32,7 @@ DELETE FROM audit_events;
 DELETE FROM devices;
 DELETE FROM local_tokens;
 DELETE FROM local_accounts;
+DELETE FROM tenant_enrolment;
 DELETE FROM people;
 DELETE FROM compliance_snapshots;
 DELETE FROM policies;
@@ -228,7 +229,7 @@ BEGIN
                        'android_enterprises','android_enrollment_tokens','siem_cursors','tenant_keys',
                        'device_apps','device_recovery_keys','tenant_admins','command_signing_keys',
                        'device_macs','people','device_compliance_history','compliance_snapshots',
-                       'local_accounts','local_tokens'] LOOP
+                       'local_accounts','local_tokens','tenant_enrolment'] LOOP
     IF NOT EXISTS (
       SELECT 1 FROM pg_class
        WHERE relname = t AND relrowsecurity AND relforcerowsecurity
@@ -252,7 +253,7 @@ BEGIN
                        'android_enterprises','android_enrollment_tokens','siem_cursors','tenant_keys',
                        'device_apps','device_recovery_keys','tenant_admins','command_signing_keys',
                        'device_macs','people','device_compliance_history','compliance_snapshots',
-                       'local_accounts','local_tokens'] LOOP
+                       'local_accounts','local_tokens','tenant_enrolment'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = t) THEN
       missing := missing || t || ' ';
     END IF;
@@ -275,7 +276,7 @@ BEGIN
                        'android_enterprises','android_enrollment_tokens','siem_cursors','tenant_keys',
                        'device_apps','device_recovery_keys','tenant_admins','command_signing_keys',
                        'device_macs','people','device_compliance_history','compliance_snapshots',
-                       'local_accounts','local_tokens'] LOOP
+                       'local_accounts','local_tokens','tenant_enrolment'] LOOP
     IF NOT EXISTS (
       SELECT 1 FROM information_schema.columns
        WHERE table_name = t AND column_name = 'tenant_id' AND is_nullable = 'NO'

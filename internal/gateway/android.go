@@ -60,8 +60,16 @@ func (g *Gateway) openBindState(subject, state string) (string, bool) {
 
 // ---------------------------------------------------------------- the page
 
-func (g *Gateway) loadAndroid(ctx context.Context, tx *data.Tx, tenant directory.Tenant, out *console.Android) error {
+func (g *Gateway) loadAndroid(ctx context.Context, tx *data.Tx, r *http.Request, tenant directory.Tenant, out *console.Android) error {
 	out.CanMail = g.mail != nil
+	mode, err := android.SelfMode(ctx, tx)
+	if err != nil {
+		return err
+	}
+	out.SelfEnrolMode = mode
+	// The one address to send everybody: this tenant's own host, which is
+	// the one the request arrived on.
+	out.SelfEnrolLink = "https://" + r.Host + "/enrol"
 	out.Configured = g.androidReady()
 	out.InPlan = tenant.Feature(directory.FeatureAndroid)
 	b, bound, err := android.Bound(ctx, tx)
@@ -88,7 +96,7 @@ func (g *Gateway) loadAndroid(ctx context.Context, tx *data.Tx, tenant directory
 func (g *Gateway) consoleAndroid(w http.ResponseWriter, r *http.Request, s console.Session) {
 	res := ResolutionFrom(r.Context())
 	g.console.AndroidPage(w, r, s, func(ctx context.Context, tx *data.Tx, out *console.Android) error {
-		return g.loadAndroid(ctx, tx, res.Tenant, out)
+		return g.loadAndroid(ctx, tx, r, res.Tenant, out)
 	})
 }
 
@@ -263,7 +271,7 @@ func (g *Gateway) consoleAndroidToken(w http.ResponseWriter, r *http.Request, re
 			if terr != nil {
 				return terr
 			}
-			if err := android.RecordToken(ctx, tx, tok, label, assignedTo, ownership, res.Subject); err != nil {
+			if err := android.RecordToken(ctx, tx, tok, label, assignedTo, ownership, res.Subject, "admin"); err != nil {
 				return err
 			}
 			if !wantMail {
@@ -299,7 +307,7 @@ func (g *Gateway) consoleAndroidToken(w http.ResponseWriter, r *http.Request, re
 	// Shown once, on the page, never through a redirect.
 	s := console.Session{Claim: ClaimFrom(r.Context()), Role: res.Role, Subject: res.Subject, CSRF: g.csrfToken(res)}
 	g.console.AndroidPage(w, r, s, func(ctx context.Context, tx *data.Tx, out *console.Android) error {
-		if err := g.loadAndroid(ctx, tx, res.Tenant, out); err != nil {
+		if err := g.loadAndroid(ctx, tx, r, res.Tenant, out); err != nil {
 			return err
 		}
 		out.NewToken, out.NewTokenQR, out.NewTokenFor = tok.Value, tok.QRCode, label

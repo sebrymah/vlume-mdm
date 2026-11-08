@@ -98,6 +98,16 @@ const (
 	// Its own action because the HR feed must not hold wipe.request: that
 	// would let an HR integration erase a named device on demand.
 	OffboardEmployee Action = "offboard.employee"
+	// EnrolOwn is "enrol MY phone": a signed-in person asks for a code for
+	// their own device, for their own address and nobody else's. A new
+	// action, with the written reason the standing rule asks for. The
+	// nearest existing one, device.enrol, lets its holder invite any device
+	// for anyone, so it is held by two roles and an Employee must not have
+	// it. This one is narrow by construction: the handler takes the address
+	// from the session, never from the form, so holding it lets a person
+	// do one thing, to themselves. Every role a person can sign in as holds
+	// it; machines, the operator and the feeds do not.
+	EnrolOwn Action = "device.enrol_own"
 )
 
 var matrix = map[Role]map[Action]bool{
@@ -107,6 +117,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: true, RequestWipe: true, ApproveWipe: true,
 		RetrieveKey: true, ViewAudit: true,
 		EnrolDevice: true, NetworkRead: false, OffboardEmployee: true,
+		EnrolOwn: true,
 	},
 	ITAdmin: {
 		ManageAccess: false,
@@ -114,6 +125,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: true, RequestWipe: true, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: true,
 		EnrolDevice: true, NetworkRead: false, OffboardEmployee: true,
+		EnrolOwn: true,
 	},
 	SecurityManager: {
 		ManageAccess: false,
@@ -121,6 +133,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: true,
 		RetrieveKey: true, ViewAudit: true,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: true,
 	},
 	Helpdesk: {
 		ManageAccess: false,
@@ -128,6 +141,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: true,
 	},
 	Auditor: {
 		ManageAccess: false,
@@ -135,6 +149,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: true,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: true,
 	},
 	Employee: {
 		ManageAccess: false,
@@ -142,6 +157,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: true,
 	},
 	Operator: {
 		ManageAccess: false,
@@ -149,6 +165,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: false,
 	},
 	Bootstrap: {
 		ManageAccess: false,
@@ -156,6 +173,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: false,
 	},
 	Device: {
 		ManageAccess: false,
@@ -163,6 +181,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: false,
+		EnrolOwn: false,
 	},
 	Network: {
 		ManageAccess: false,
@@ -170,6 +189,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: true, OffboardEmployee: false,
+		EnrolOwn: false,
 	},
 	HRFeed: {
 		ManageAccess: false,
@@ -177,6 +197,7 @@ var matrix = map[Role]map[Action]bool{
 		LockDevice: false, RequestWipe: false, ApproveWipe: false,
 		RetrieveKey: false, ViewAudit: false,
 		EnrolDevice: false, NetworkRead: false, OffboardEmployee: true,
+		EnrolOwn: false,
 	},
 }
 
@@ -214,6 +235,6 @@ func Actions() []Action {
 	return []Action{
 		ViewDevices, ViewOwnDevices, ChangePolicy, LockDevice,
 		RequestWipe, ApproveWipe, RetrieveKey, ViewAudit, EnrolDevice,
-		ManageAccess, NetworkRead, OffboardEmployee,
+		ManageAccess, NetworkRead, OffboardEmployee, EnrolOwn,
 	}
 }

@@ -1432,6 +1432,47 @@ GRANT SELECT ON devices TO mdm_operator;"
 		text, kind = tok.QRCode, \"provision\""
   ;;
 
+--break-selfwho)
+  # The code is made for whatever address the form names, not the address of
+  # the person signed in. Anybody could then enrol a phone as anybody.
+  echo "==> NEGATIVE CONTROL: the code is for the address typed, not the signed-in person"
+  patch internal/gateway/selfenrol.go \
+    "	email := strings.ToLower(strings.TrimSpace(res.Email))" \
+    "	email := strings.ToLower(strings.TrimSpace(r.FormValue(\"assigned_to\")))"
+  ;;
+
+--break-selfoff)
+  # The administrator's setting is ignored: a code is made while it is off.
+  echo "==> NEGATIVE CONTROL: self-enrolment works while it is switched off"
+  patch internal/gateway/selfenrol.go \
+    "			if mode == android.SelfOff {" \
+    "			if false {"
+  ;;
+
+--break-selfcap)
+  # No limit on how many codes one person can make Google issue.
+  echo "==> NEGATIVE CONTROL: no limit on codes per person"
+  patch internal/gateway/selfenrol.go \
+    "			if n >= android.SelfLimit {" \
+    "			if n >= 1<<30 {"
+  ;;
+
+--break-selfowner)
+  # A person in personal-only mode can still ask for a company phone.
+  echo "==> NEGATIVE CONTROL: a person may ask for a company phone in personal mode"
+  patch internal/gateway/selfenrol.go \
+    "			if mode == android.SelfAny && wanted == \"company\" {" \
+    "			if wanted == \"company\" {"
+  ;;
+
+--break-selfleaver)
+  # Somebody the platform has been told has left can still enrol a phone.
+  echo "==> NEGATIVE CONTROL: a leaver can enrol a phone"
+  patch internal/gateway/selfenrol.go \
+    "			if left {" \
+    "			if left && false {"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1490,7 +1531,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

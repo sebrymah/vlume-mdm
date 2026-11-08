@@ -1,0 +1,79 @@
+{{template "head" .}}
+{{template "brandbar" .}}
+<div class="shell">
+{{template "nav" .}}
+<main>
+  {{template "said" .}}
+  <h1>Enrol my phone</h1>
+  {{with .SelfEnrol}}
+
+  {{if eq .Mode "off"}}
+    <p class="sub">Your organisation has not turned this on. If you need a phone set up for work,
+    ask your IT team.</p>
+
+  {{else if .Started}}
+    <div class="card" style="border-color:var(--brand)">
+      <p style="margin:0 0 6px"><strong>Your code is ready.</strong> It is for you alone, works once, and
+      stops working at {{.Expires.Format "15:04"}}.</p>
+
+      {{if and .OnPhone (eq .QRKind "link")}}
+      <p style="margin:12px 0"><a href="{{.Link}}"
+         style="display:inline-block;padding:12px 20px;border-radius:8px;background:var(--brand);color:#fff;font-weight:600;text-decoration:none">Enrol this phone</a></p>
+      <p class="sub" style="font-size:13px;margin:0 0 12px">This installs a small app from Google Play and sets up a
+      separate work profile. Your own apps, photos and messages stay yours.</p>
+      {{end}}
+
+      {{if .QRImage}}
+      <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin:12px 0">
+        <img src="{{.QRImage}}" alt="QR code to enrol your phone"
+             style="max-width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:6px;background:#fff">
+        <div style="flex:1 1 240px">
+          <p class="k" style="margin:0 0 4px">{{if and .OnPhone (eq .QRKind "link")}}Or, from another screen{{else}}Scan with your phone{{end}}</p>
+          {{if eq .QRKind "link"}}
+          <p style="margin:0 0 6px">Open the phone's camera, point it at this code, and tap the link that appears.
+          It installs a small app from Google Play and sets up a work profile. Your own apps, photos and
+          messages stay yours.</p>
+          {{else}}
+          <p style="margin:0 0 6px">For a <strong>new or freshly reset</strong> company phone. On the first welcome
+          screen, tap the screen <strong>six times</strong> in the same spot. A scanner opens. Point it at this
+          code and the phone sets itself up.</p>
+          <p class="sub" style="font-size:12px;margin:0">The camera app will not read this one. It is for the
+          welcome screen only.</p>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+
+      <p class="sub" style="font-size:13px;margin:8px 0 0">When it finishes, the phone shows up under
+      <a href="/me">Your devices</a> within about fifteen minutes.</p>
+    </div>
+
+  {{else}}
+    <p class="sub">Set up your phone for work in about a minute. You get a code for <strong>your</strong> phone,
+    tied to <strong>your</strong> address. Nobody else can use it.</p>
+
+    <form method="post" action="/enrol/start" class="card" style="max-width:520px">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <label style="display:block;margin-bottom:12px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Call it (optional)</span>
+        <input name="label" maxlength="60" placeholder="My phone"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      {{if eq .Mode "any"}}
+      <fieldset style="border:0;padding:0;margin:0 0 12px">
+        <legend style="font-size:12px;color:var(--muted);margin-bottom:4px">Which phone is this</legend>
+        <label style="display:block;margin-bottom:6px"><input type="radio" name="ownership" value="personal" checked>
+          My own phone (a separate work profile, my own things stay private)</label>
+        <label style="display:block"><input type="radio" name="ownership" value="company">
+          A new company phone (set up from the welcome screen)</label>
+      </fieldset>
+      {{end}}
+      <button type="submit"
+              style="padding:10px 18px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Show my code</button>
+    </form>
+  {{end}}
+
+  {{end}}
+</main>
+</div>
+{{template "foot" .}}

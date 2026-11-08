@@ -194,6 +194,14 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-mfarequired   # let an administrator in on a password alone, expect a FAILURE
 ./run_go.sh --break-localprotocol # take a password at an identity-provider tenant, expect a FAILURE
 ./run_go.sh --break-sessionsend   # leave a person's sessions when their access changes, expect a FAILURE
+./run_go.sh --break-reserved      # let a customer take the short name app or www, expect a FAILURE
+./run_go.sh --break-qrpayload     # draw the bare token in the QR code instead of the link, expect a FAILURE
+./run_go.sh --break-qrowner       # show a company phone the personal phone's QR code, expect a FAILURE
+./run_go.sh --break-selfwho       # make a self-service code for the address typed, not the person, expect a FAILURE
+./run_go.sh --break-selfoff       # ignore the switch: self-enrol while it is off, expect a FAILURE
+./run_go.sh --break-selfcap       # remove the five-codes-a-day limit, expect a FAILURE
+./run_go.sh --break-selfowner     # let a personal-only person ask for a company phone, expect a FAILURE
+./run_go.sh --break-selfleaver    # let somebody who has left enrol a phone, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -559,6 +567,79 @@ challenge would fail every sign-in test rather than quietly getting weaker.
 
 The gateway's sign-in tests drive it with a real `http.Client`, a real cookie
 jar and redirect following. The only thing simulated is DNS.
+
+## QR codes and self-service enrolment
+
+### The QR code
+
+An Android invitation used to print Google's provisioning payload as raw text
+and suggest pasting it into somebody else's QR generator. It now draws the
+code itself (`internal/qr`, a PNG inside a `data:` URL, so the secret in it is
+never fetched from or sent to anywhere). There are two kinds, and they are not
+interchangeable:
+
+| Phone | The code holds | Read by |
+|---|---|---|
+| a personal phone, already in use | Google's enrolment link | the phone's camera, which opens it |
+| a company phone, new or reset | Google's provisioning payload | the welcome screen, after six taps |
+
+A link-code on a company phone scans and leads nowhere, because a welcome
+screen has no browser, so the page never shows one (`--break-qrowner`). The
+tests do not trust the encoder: `internal/qr/qrtest` reads the picture back
+with an independent decoder, from the real page, and the text has to be
+exactly right (`--break-qrpayload` draws the bare token and is caught).
+
+### One link for everybody
+
+For a few hundred people, making a token each is a week of typing. An
+administrator (Super Admin or IT Admin) turns on **Let people enrol their own
+phone** on the Android page, in one of three settings, and sends **one link**,
+`https://<the organisation's host>/enrol`, in an all-staff message:
+
+| Setting | A person may |
+|---|---|
+| off (the default) | nothing; the menu entry is absent |
+| personal | enrol their own phone as a work profile |
+| any | that, or set up a new company phone at the welcome screen |
+
+A person opens the link, is sent to sign in and brought back, asks for a code,
+and gets the QR code (or, if the page is open on an Android phone, a button).
+The phone lands on their own page under Your devices within about fifteen
+minutes, which is the sync interval. The rules that make this safe, each with
+a test and a control:
+
+- **Whose it is.** The address on the code is the signed-in person's, from the
+  session. The form has no such field, so a forged one is ignored
+  (`--break-selfwho`). A session with no address, such as a bearer token, gets
+  no code.
+- **Off means off.** Nothing is made, and Google is asked for nothing, while the
+  setting is off (`--break-selfoff`). One organisation's setting never applies
+  to another's.
+- **Five a day.** One person may ask for five codes in 24 hours, counted per
+  person under a lock so two clicks at once cannot both slip under
+  (`--break-selfcap`). Each code works once and lasts an hour. An administrator
+  issuing tokens is not counted: the limit is for the self-service page.
+- **Personal means personal.** In personal mode a person cannot ask for a
+  company phone (`--break-selfowner`).
+- **Leavers.** Somebody the platform has been told has left is refused, judged
+  by their subject and not their address, because an address passes to the next
+  hire and the next hire is not the leaver (`--break-selfleaver`).
+
+The permission is new, `device.enrol_own`, with its reason written beside it
+in `authz.go`: `device.enrol` lets its holder invite any device for anyone and
+is held by two roles, so an Employee cannot have it; this one is narrow by
+construction. Every role a person signs in as holds it; machines, the operator
+and the feeds do not.
+
+Migration `0045` adds the `tenant_enrolment` table (row-level security like
+every tenant table) and a `source` on Android tokens, `admin` or `self`.
+
+### Not built yet
+
+- Bulk invitation from a list (a CSV of people, each emailed their own code).
+- One reusable code for a whole team of company phones, with the devices
+  assigned to people afterwards.
+- Windows: there is no Windows enrolment yet, so no Windows QR.
 
 ## Enrolment
 

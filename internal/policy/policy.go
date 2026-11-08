@@ -621,6 +621,11 @@ func Evaluate(rules Rules, rep Report, reportedAt, now time.Time) Verdict {
 			case !ok:
 				// A date we cannot read is not a pass.
 				note(found(req, fmt.Sprintf("its patch level, %q, is not a date this platform can read", rep.PatchLevel), true))
+			case patched.After(now.Add(48 * time.Hour)):
+				// No phone has a patch from the future. A date that far ahead is
+				// a wrong clock or a made-up report, and a negative age must never
+				// read as "newer than any limit". Two days of slack for clock skew.
+				note(found(req, fmt.Sprintf("its patch level, %s, is in the future, which a real phone cannot have", rep.PatchLevel), true))
 			default:
 				// Whole days, so a patch exactly as old as the limit passes and
 				// one a day older does not.

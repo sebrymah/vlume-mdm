@@ -529,3 +529,24 @@ func TestAKnownFailureOutranksAMissingFieldOnAPhone(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+// A patch dated in the future is not newer than any limit, it is not believable.
+// It is unknown, which is never a pass; a day or two ahead is clock skew and
+// is let through.
+func TestAFuturePatchDateIsNotAPass(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	r := rules(t, "Window", `{"security_patch_max_age_days": 30}`)
+	for _, c := range []struct {
+		level, state string
+	}{
+		{"2030-01-01", Unknown},
+		{"2026-12-01", Unknown},
+		{"2026-11-09", Compliant}, // tomorrow: clock skew
+		{"2026-11-10", Compliant}, // within two days
+		{"2026-11-12", Unknown},   // four days ahead
+	} {
+		if got := Evaluate(r, Report{PatchLevel: c.level}, now, now).State; got != c.state {
+			t.Errorf("patch level %s: %s, want %s", c.level, got, c.state)
+		}
+	}
+}

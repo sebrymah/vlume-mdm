@@ -227,6 +227,8 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-integrity      # do not read an at-risk phone as failing its integrity check, expect a FAILURE
 ./run_go.sh --break-accessibility  # let the accessibility allow-list beat system-only, expect a FAILURE
 ./run_go.sh --break-listmerge      # join two allow-lists instead of intersecting them, expect a FAILURE
+./run_go.sh --break-futurepatch    # let a security patch dated in the future pass, expect a FAILURE
+./run_go.sh --break-debugpartial   # read debugging as off when only one switch said so, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -684,6 +686,8 @@ exactly like the first seven (a phone that does not say is unknown, never a pass
 | `unknown_sources_blocked` | installing from unknown sources allowed |
 | `play_protect_required` | Google Play Protect's app scanning off |
 | `integrity_required` | Google's own security posture: `AT_RISK` or `POTENTIAL_RISK` fails |
+
+Two cautions are built in. Debugging is off only when BOTH switches (USB debugging and developer options) say off; one on is on, and one off with the other unsaid stays unknown (`--break-debugpartial`). A patch dated more than two days ahead is unknown, never a pass, because its age would be negative (`--break-futurepatch`).
 
 Three of them (debugging, unknown sources, Play Protect) are also *delivered*, so a
 phone is both held to the rule and told to stay that way (`--break-offsense`,

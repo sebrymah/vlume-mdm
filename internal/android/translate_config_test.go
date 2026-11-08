@@ -273,3 +273,26 @@ func TestAccessibilityServicesAreSettledTheSameWayEveryTime(t *testing.T) {
 		t.Fatal("accessibility was restricted although no policy asked")
 	}
 }
+
+// One of the two debugging switches unsaid is not "off". The rule is that both
+// are off, so a phone that reports only one as off has not shown it.
+func TestDebuggingIsOnlyOffWhenBothSwitchesSayOff(t *testing.T) {
+	for name, tc := range map[string]struct {
+		adb, dev *bool
+		want     *bool
+	}{
+		"both off":            {no(), no(), no()},
+		"adb on":              {yes(), no(), yes()},
+		"dev options on":      {no(), yes(), yes()},
+		"adb on, dev unsaid":  {yes(), nil, yes()},
+		"dev on, adb unsaid":  {nil, yes(), yes()},
+		"adb off, dev unsaid": {no(), nil, nil},
+		"dev off, adb unsaid": {nil, no(), nil},
+		"neither said":        {nil, nil, nil},
+	} {
+		got := ReportFrom(Device{ADBEnabled: tc.adb, DevSettingsEnabled: tc.dev}, Policy{}).DebuggingEnabled
+		if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+			t.Errorf("%s: read as %v, want %v", name, got, tc.want)
+		}
+	}
+}

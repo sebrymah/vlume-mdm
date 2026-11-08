@@ -277,9 +277,17 @@ func ReportFrom(d Device, delivered Policy) policy.Report {
 	rep.PatchLevel = d.PatchLevel
 	rep.UnknownSourcesEnabled = d.UnknownSources
 	rep.PlayProtectEnabled = d.VerifyApps
-	if d.ADBEnabled != nil || d.DevSettingsEnabled != nil {
-		on := (d.ADBEnabled != nil && *d.ADBEnabled) || (d.DevSettingsEnabled != nil && *d.DevSettingsEnabled)
+	// The rule is that USB debugging AND developer options are off. Either one
+	// on is debugging on. Both reported off is off. Anything less, one off and
+	// the other unsaid, is not a pass: it stays unsaid, and the rule comes out
+	// unknown.
+	switch {
+	case (d.ADBEnabled != nil && *d.ADBEnabled) || (d.DevSettingsEnabled != nil && *d.DevSettingsEnabled):
+		on := true
 		rep.DebuggingEnabled = &on
+	case d.ADBEnabled != nil && d.DevSettingsEnabled != nil:
+		off := false
+		rep.DebuggingEnabled = &off
 	}
 	switch d.Posture {
 	case "SECURE":

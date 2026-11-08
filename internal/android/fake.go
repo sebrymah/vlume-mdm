@@ -42,6 +42,9 @@ type FakeGoogle struct {
 	// TokenUsage records allowPersonalUsage per token name: the difference
 	// between a work profile and a fully managed device.
 	TokenUsage map[string]string
+	// FailTokens makes the next enrolment-token requests fail, the way Google
+	// does on a bad day, so a test can see what the platform does about it.
+	FailTokens bool
 }
 
 type fakeEnterprise struct {
@@ -264,6 +267,10 @@ func (f *FakeGoogle) serve(w http.ResponseWriter, r *http.Request) {
 		write(200, map[string]any{"name": path})
 
 	case r.Method == "POST" && strings.HasSuffix(path, "/enrollmentTokens"):
+		if f.FailTokens {
+			refuse(503, "the service is unavailable")
+			return
+		}
 		ent := strings.TrimSuffix(path, "/enrollmentTokens")
 		e, ok := f.enterprises[ent]
 		if !ok {

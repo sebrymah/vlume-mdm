@@ -208,6 +208,8 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-joincap       # let a join link enrol more devices than its limit, expect a FAILURE
 ./run_go.sh --break-joinexpiry    # let a join link outlive its time, expect a FAILURE
 ./run_go.sh --break-joincancel    # let a cancelled join link keep working, expect a FAILURE
+./run_go.sh --break-joinrace      # judge guesses without locking the link, so a flood is all tried, expect a FAILURE
+./run_go.sh --break-joinreset     # let a success reset the wrong-guess count, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -686,6 +688,13 @@ The rules, each with a test and a control:
   limit and counts the use, so the last place cannot be taken twice. A test sends
   fourteen people at five places at once and exactly five get in
   (`--break-joincap`, `--break-joinexpiry`).
+- **A flood is counted before it is tried.** The link's row is locked first and
+  the state, the code and the count are all judged while holding it, so attempts
+  go through one at a time. Forty guesses at once: ten are tried, thirty are
+  refused untried (`--break-joinrace`). A success never resets the wrong-guess
+  count, so one person getting in does not give somebody guessing ten more tries
+  (`--break-joinreset`). A place reserved for a phone that Google then failed to
+  make a token for is given back.
 - **Cancel is instant** (`--break-joincancel`). Devices already set up stay.
 - **Nothing is stored that can be read back.** The link's secret is kept only
   as a SHA-256 and the code only as an argon2id hash (slow on purpose, since six

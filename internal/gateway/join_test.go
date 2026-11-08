@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"net/http"
@@ -381,5 +382,93 @@ func TestJoinLimitsAreChecked(t *testing.T) {
 	}
 	if n := adminCount(t, `SELECT count(*) FROM join_links`); n != 0 {
 		t.Fatalf("%d links were made from bad forms", n)
+	}
+}
+
+// A flood of guesses is counted before it is tried. Forty people (or one
+// person on forty addresses) guess at the same moment: exactly ten are tried,
+// and the other thirty are refused without being tried, because the link is
+// paused by then. The old order checked "is it paused?" first, so all forty
+// were tried before any was counted.
+func TestAFloodOfGuessesIsCountedBeforeItIsTried(t *testing.T) {
+	f := selfReady(t)
+	path, code := makeJoin(t, f, joinForm("Flooded", "5", "168", "personal"))
+	issued := tokensIssued(f)
+	bad := wrongCode(code)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	tried, refused := 0, 0
+	for i := 0; i < 40; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			r := httptest.NewRequest("POST", "http://"+hostA+path, strings.NewReader(url.Values{"code": {bad}}.Encode()))
+			r.Host = hostA
+			r.RemoteAddr = fmt.Sprintf("198.51.100.%d:5000", i+1) // forty addresses: the per-address limit is not what stops them
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			f.h.ServeHTTP(rec, r)
+			mu.Lock()
+			defer mu.Unlock()
+			switch rec.Code {
+			case http.StatusUnauthorized:
+				tried++
+			case http.StatusTooManyRequests:
+				refused++
+			}
+		}(i)
+	}
+	wg.Wait()
+	if tried != 10 || refused != 30 {
+		t.Fatalf("%d guesses were tried and %d refused, want 10 and 30: the count did not come before the trying", tried, refused)
+	}
+	if rec := enter(t, f, path, code); rec.Code != http.StatusTooManyRequests || tokensIssued(f) != issued {
+		t.Fatalf("the right code after the flood: %d", rec.Code)
+	}
+}
+
+// Somebody else's success does not hand a guesser more tries. Nine wrong
+// codes, then a right one by a real person, then one more wrong: that is ten
+// wrong in the hour, and the link pauses. Resetting the count on a success
+// would have made the next nine free.
+func TestASuccessDoesNotGiveAGuesserMoreTries(t *testing.T) {
+	f := selfReady(t)
+	path, code := makeJoin(t, f, joinForm("Mixed", "5", "168", "personal"))
+	bad := wrongCode(code)
+	for i := 0; i < 9; i++ {
+		if rec := enter(t, f, path, bad); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong code %d: %d", i+1, rec.Code)
+		}
+	}
+	if rec := enter(t, f, path, code); rec.Code != 200 {
+		t.Fatalf("a real person entering the right code: %d", rec.Code)
+	}
+	if n := adminCount(t, `SELECT failed_count FROM join_links WHERE name = 'Mixed'`); n != 9 {
+		t.Fatalf("the wrong-guess count is %d after a success, want 9: the success reset it", n)
+	}
+	if rec := enter(t, f, path, bad); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("the tenth wrong code: %d", rec.Code)
+	}
+	if rec := enter(t, f, path, code); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("after ten wrong in the hour the link should be paused, got %d", rec.Code)
+	}
+}
+
+// A place reserved for a phone that Google then failed to make a token for is
+// given back, so a team does not lose places to somebody else's bad luck.
+func TestAPlaceIsGivenBackWhenGoogleFails(t *testing.T) {
+	f := selfReady(t)
+	path, code := makeJoin(t, f, joinForm("Unlucky", "2", "168", "personal"))
+	f.google.FailTokens = true
+	rec := enter(t, f, path, code)
+	f.google.FailTokens = false
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "not used up") {
+		t.Fatalf("Google failing: %d\n%.300s", rec.Code, rec.Body.String())
+	}
+	if n := adminCount(t, `SELECT uses FROM join_links WHERE name = 'Unlucky'`); n != 0 {
+		t.Fatalf("%d uses counted for a phone that was never set up", n)
+	}
+	if rec := enter(t, f, path, code); rec.Code != 200 {
+		t.Fatalf("the place was not given back: %d", rec.Code)
 	}
 }

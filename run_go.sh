@@ -1533,6 +1533,24 @@ GRANT SELECT ON devices TO mdm_operator;"
     "		 WHERE id = \$1 AND expires_at > \$2 AND uses < max_uses"
   ;;
 
+--break-joinrace)
+  # The link is not locked while a guess is judged, so a burst of
+  # simultaneous guesses are all tried before any is counted.
+  echo "==> NEGATIVE CONTROL: guesses at a join link are not taken one at a time"
+  patch internal/android/join.go \
+    "code_hash FROM join_links WHERE id = \$1 FOR UPDATE" \
+    "code_hash FROM join_links WHERE id = \$1"
+  ;;
+
+--break-joinreset)
+  # A success wipes the wrong-guess count, so somebody guessing gets a fresh
+  # ten tries every time another person gets in.
+  echo "==> NEGATIVE CONTROL: a success resets the wrong-guess count"
+  patch internal/android/join.go \
+    "		UPDATE join_links SET uses = uses + 1" \
+    "		UPDATE join_links SET uses = uses + 1, failed_count = 0, failed_since = NULL"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1591,7 +1609,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

@@ -95,6 +95,15 @@ func (g *Gateway) joinPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // joinSubmit checks the code and, if it is right, gives the way in.
+//
+// The order matters, and it has been got wrong once. The link's row is locked
+// FIRST and the state, the code and the count are all judged while holding it,
+// so attempts at one link go through one at a time: ten wrong codes pause it,
+// and the eleventh and everyone after are refused without being tried, however
+// many arrived together. A right code reserves its place in the same
+// transaction (the device limit), and only then is Google asked, outside the
+// lock, so a slow call to Google does not queue a whole team behind one phone.
+// If Google fails, the place is given back.
 func (g *Gateway) joinSubmit(w http.ResponseWriter, r *http.Request) {
 	host, ok := g.publicHost(w, r)
 	if !ok {
@@ -115,49 +124,87 @@ func (g *Gateway) joinSubmit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "that form could not be read")
 		return
 	}
-	now := time.Now().UTC()
-	link, codeHash, found, err := g.joinLookup(r, host, r.PathValue("secret"))
+	link, _, found, err := g.joinLookup(r, host, r.PathValue("secret"))
 	if err != nil {
 		g.log.Error("join lookup", "tenant", host.Slug, "err", err)
 		http.Error(w, "This page could not be shown. Try again in a minute.", http.StatusInternalServerError)
 		return
 	}
-	switch state := link.State(now); {
-	case !found || (state != "active" && state != "paused"):
+	if !found {
 		g.joinClosed(w, r, host)
 		return
-	case state == "paused":
-		g.joinView(w, r, host, http.StatusTooManyRequests, console.JoinView{Mode: "closed", Title: "This link is paused", Said: joinPausedSaid})
-		return
 	}
-
-	// The code is checked here, outside any lock, so five hundred people
-	// arriving at once do not queue behind one slow hash.
-	if !android.VerifyJoinCode(r.PostFormValue("code"), codeHash) {
-		if err := g.asBootstrap(r.Context(), host, "join", func(ctx context.Context, tx *data.Tx) error {
-			return android.JoinWrongCode(ctx, tx, link.ID, now)
-		}); err != nil {
-			g.log.Error("join wrong code", "tenant", host.Slug, "link", link.ID, "err", err)
-		}
-		g.joinView(w, r, host, http.StatusUnauthorized, console.JoinView{Mode: "code", Title: "Set up your phone", Name: link.Name, Said: joinWrongSaid})
-		return
-	}
-
 	if !host.Feature(directory.FeatureAndroid) || !g.androidReady() {
 		g.joinView(w, r, host, http.StatusServiceUnavailable, console.JoinView{Mode: "closed", Title: "Not available",
 			Said: "Phones cannot be set up here right now. Tell whoever sent you this link."})
 		return
 	}
 
-	var tok android.EnrollmentToken
+	// Judge it under the lock. outcome says what happened.
+	const (
+		closed = iota + 1
+		paused
+		wrong
+		reserved
+	)
+	var outcome int
 	var used android.JoinLink
+	typed := r.PostFormValue("code")
 	err = g.asBootstrap(r.Context(), host, "join", func(ctx context.Context, tx *data.Tx) error {
-		// One statement counts the use and checks the state, the clock and
-		// the limit, so the last place cannot be taken twice.
-		var e error
-		if used, e = android.UseJoin(ctx, tx, link.ID, now); e != nil {
+		now := time.Now().UTC()
+		l, codeHash, e := android.LockJoin(ctx, tx, link.ID)
+		if errors.Is(e, android.ErrJoinNotUsable) {
+			outcome = closed
+			return nil
+		}
+		if e != nil {
 			return e
 		}
+		switch l.State(now) {
+		case "active":
+		case "paused":
+			outcome = paused
+			return nil
+		default:
+			outcome = closed
+			return nil
+		}
+		if !android.VerifyJoinCode(typed, codeHash) {
+			outcome = wrong
+			return android.JoinWrongCode(ctx, tx, l.ID, now)
+		}
+		// Reserve the place now, under the same lock.
+		if used, e = android.UseJoin(ctx, tx, l.ID, now); e != nil {
+			if errors.Is(e, android.ErrJoinNotUsable) {
+				outcome = closed
+				return nil
+			}
+			return e
+		}
+		outcome = reserved
+		return nil
+	})
+	if err != nil {
+		g.log.Error("join attempt", "tenant", host.Slug, "link", link.ID, "err", err)
+		g.joinView(w, r, host, http.StatusBadGateway, console.JoinView{Mode: "code", Title: "Set up your phone", Name: link.Name,
+			Said: "Something went wrong on our side. Try again in a minute."})
+		return
+	}
+	switch outcome {
+	case closed:
+		g.joinClosed(w, r, host)
+		return
+	case paused:
+		g.joinView(w, r, host, http.StatusTooManyRequests, console.JoinView{Mode: "closed", Title: "This link is paused", Said: joinPausedSaid})
+		return
+	case wrong:
+		g.joinView(w, r, host, http.StatusUnauthorized, console.JoinView{Mode: "code", Title: "Set up your phone", Name: link.Name, Said: joinWrongSaid})
+		return
+	}
+
+	// The code was right and the place is ours. Now ask Google.
+	var tok android.EnrollmentToken
+	err = g.asBootstrap(r.Context(), host, "join", func(ctx context.Context, tx *data.Tx) error {
 		b, bound, e := android.Bound(ctx, tx)
 		if e != nil {
 			return e
@@ -170,7 +217,7 @@ func (g *Gateway) joinSubmit(w http.ResponseWriter, r *http.Request) {
 			PersonalUsage: used.Ownership == "personal",
 		})
 		if e != nil {
-			return e // the use is not kept: this transaction rolls back
+			return e
 		}
 		label := used.Name
 		if used.MaxUses > 1 {
@@ -181,16 +228,19 @@ func (g *Gateway) joinSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		return data.AppendAudit(ctx, tx, "android.join_used", fmt.Sprintf("link:%s use:%d of %d", used.ID, used.Uses, used.MaxUses))
 	})
-	switch {
-	case errors.Is(err, android.ErrJoinNotUsable):
-		g.joinClosed(w, r, host)
-		return
-	case errors.Is(err, android.ErrNotBound):
-		g.joinView(w, r, host, http.StatusServiceUnavailable, console.JoinView{Mode: "closed", Title: "Not available",
-			Said: "Phones cannot be set up here right now. Tell whoever sent you this link."})
-		return
-	case err != nil:
-		g.log.Error("join use", "tenant", host.Slug, "link", link.ID, "err", err)
+	if err != nil {
+		// Give the place back: this phone was not set up.
+		if rerr := g.asBootstrap(r.Context(), host, "join", func(ctx context.Context, tx *data.Tx) error {
+			return android.RefundJoin(ctx, tx, used.ID)
+		}); rerr != nil {
+			g.log.Error("join refund", "tenant", host.Slug, "link", used.ID, "err", rerr)
+		}
+		if errors.Is(err, android.ErrNotBound) {
+			g.joinView(w, r, host, http.StatusServiceUnavailable, console.JoinView{Mode: "closed", Title: "Not available",
+				Said: "Phones cannot be set up here right now. Tell whoever sent you this link."})
+			return
+		}
+		g.log.Error("join token", "tenant", host.Slug, "link", used.ID, "err", err)
 		g.joinView(w, r, host, http.StatusBadGateway, console.JoinView{Mode: "code", Title: "Set up your phone", Name: link.Name,
 			Said: "Something went wrong on our side and your code was not used up. Try again in a minute."})
 		return

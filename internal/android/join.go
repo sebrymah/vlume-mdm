@@ -229,13 +229,30 @@ func JoinWrongCode(ctx context.Context, tx *data.Tx, id uuid.UUID, now time.Time
 	return nil
 }
 
+// LockJoin takes the link's row and holds it until the transaction ends, and
+// returns it with the hash of its code. Every attempt at the code goes through
+// here, one at a time per link, and checks the state AFTER it has the lock.
+// Checking before it, as this once did, let a burst of simultaneous guesses
+// all see "not paused" and all be tried before any of them was counted.
+func LockJoin(ctx context.Context, tx *data.Tx, id uuid.UUID) (j JoinLink, codeHash string, err error) {
+	err = tx.QueryRow(ctx, `SELECT `+joinColumns+`, code_hash FROM join_links WHERE id = $1 FOR UPDATE`, id).
+		Scan(&j.ID, &j.Name, &j.Ownership, &j.AssignedTo, &j.MaxUses, &j.Uses,
+			&j.ExpiresAt, &j.Status, &j.CreatedBy, &j.CreatedAt, &j.LockedUntil, &codeHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return JoinLink{}, "", ErrJoinNotUsable
+	}
+	return
+}
+
 // UseJoin spends one use, if the link can still be used. It is one statement
 // that checks every rule and counts, so two people entering the last valid
-// code at once cannot both get it.
+// code at once cannot both get it. It does NOT touch the wrong-guess count: a
+// success by one person must not give somebody guessing more tries, so the
+// window runs out on its own clock.
 func UseJoin(ctx context.Context, tx *data.Tx, id uuid.UUID, now time.Time) (JoinLink, error) {
 	var j JoinLink
 	err := scanJoin(tx.QueryRow(ctx, `
-		UPDATE join_links SET uses = uses + 1, failed_count = 0, failed_since = NULL
+		UPDATE join_links SET uses = uses + 1
 		 WHERE id = $1 AND status = 'active' AND expires_at > $2 AND uses < max_uses
 		   AND (locked_until IS NULL OR locked_until <= $2)
 		RETURNING `+joinColumns, id, now), &j)
@@ -243,6 +260,14 @@ func UseJoin(ctx context.Context, tx *data.Tx, id uuid.UUID, now time.Time) (Joi
 		return JoinLink{}, ErrJoinNotUsable
 	}
 	return j, err
+}
+
+// RefundJoin gives back a use that was reserved and then not delivered,
+// because Google did not make the token. A person whose phone was never set
+// up has not used a place.
+func RefundJoin(ctx context.Context, tx *data.Tx, id uuid.UUID) error {
+	_, err := tx.Exec(ctx, `UPDATE join_links SET uses = uses - 1 WHERE id = $1 AND uses > 0`, id)
+	return err
 }
 
 // VerifyJoinCode checks a typed code against a link's stored hash. Only

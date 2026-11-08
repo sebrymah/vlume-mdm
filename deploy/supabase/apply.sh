@@ -24,7 +24,7 @@ NET=()
 # any local process listing would show it.
 export SUPABASE_DB_URL
 psql_() {
-  docker run --rm -i "${NET[@]}" -e PGCONNECT_TIMEOUT=15 -e SUPABASE_DB_URL "$IMAGE" \
+  docker run --rm -i ${NET[@]+"${NET[@]}"} -e PGCONNECT_TIMEOUT=15 -e SUPABASE_DB_URL "$IMAGE" \
     sh -c 'exec psql -v ON_ERROR_STOP=1 -X -q "$SUPABASE_DB_URL" "$@"' sh "$@"
 }
 

@@ -1626,6 +1626,24 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	if _, ok := rules[policy.PasscodeMinLength]; ok && false {"
   ;;
 
+--break-enrolscheme)
+  # The enrolment link says http:// for every real address, so a token followed
+  # as written is sent across the internet unprotected.
+  echo "==> NEGATIVE CONTROL: the enrolment link is http"
+  patch internal/gateway/enrolment.go \
+    "	if host == \"localhost\" || host == \"127.0.0.1\"" \
+    "	if true || host == \"localhost\" || host == \"127.0.0.1\""
+  ;;
+
+--break-enrolandroid)
+  # The Enrolments page makes an agent token for an Android phone, a link that
+  # does nothing on a phone.
+  echo "==> NEGATIVE CONTROL: the Enrolments page makes an agent token for an Android phone"
+  patch internal/gateway/console_post.go \
+    "	if in.OSFamily == \"android\" {" \
+    "	if false && in.OSFamily == \"android\" {"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1684,7 +1702,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

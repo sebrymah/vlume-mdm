@@ -240,6 +240,13 @@ func (g *Gateway) consoleCreateEnrolment(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	in := readEnrolmentInput(r)
+	// An Android phone has no agent for this token to go to. It is set up from
+	// the Android page, with a join link and a QR code, and a token made here
+	// would be a link that does nothing on a phone.
+	if in.OSFamily == "android" {
+		back(w, r, "/android", "Android phones are set up from the Android page, with a join link and a QR code. The Enrolments page is for computers that run the device agent.")
+		return
+	}
 
 	var token string
 	err := g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),

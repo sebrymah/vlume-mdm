@@ -18,6 +18,7 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -164,6 +165,9 @@ type page struct {
 	KeyDeviceID    uuid.UUID
 	KeyKind        string
 	KeyValue       string
+	// NewCommand is the line to run on a computer to enrol it with the token
+	// just made. Shown once, with the token, on the page that made it.
+	NewCommand string
 	// Mine is the employee surface: this person's own devices, each with
 	// its verdict and what it is held to, read in one transaction so a
 	// page cannot show one device's findings beside another's rules.
@@ -467,6 +471,17 @@ func (c *Console) Enrolments(w http.ResponseWriter, r *http.Request, s Session) 
 }
 
 // EnrolmentCreated is the one page that shows a token, once.
+// agentCommand is what to type on the computer. The token goes in on standard
+// input, not on the command line, because a command line is visible to every
+// other person using the machine.
+func agentCommand(link, token string) string {
+	server := link
+	if i := strings.Index(link, "/enrol?"); i > 0 {
+		server = link[:i]
+	}
+	return "echo '" + token + "' | sudo agent -server " + server + " -dir /var/lib/mdm enrol"
+}
+
 func (c *Console) EnrolmentCreated(w http.ResponseWriter, r *http.Request, s Session,
 	token, link string) {
 
@@ -474,6 +489,7 @@ func (c *Console) EnrolmentCreated(w http.ResponseWriter, r *http.Request, s Ses
 		func(ctx context.Context, tx *data.Tx, p *page) error {
 			p.NewToken = token
 			p.NewLink = link
+			p.NewCommand = agentCommand(link, token)
 			es, err := enrol.List(ctx, tx, 100)
 			if err != nil {
 				return err

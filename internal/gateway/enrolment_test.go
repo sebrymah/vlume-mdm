@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -733,5 +734,62 @@ func queryRow(t *testing.T, sql string, into any, args ...any) {
 	defer conn.Close(ctx)
 	if err := conn.QueryRow(ctx, sql, args...).Scan(into); err != nil {
 		t.Fatalf("query: %v", err)
+	}
+}
+
+// The link an operator is shown starts https, not http. Behind a load
+// balancer that ends TLS the process never sees TLS, and the link used to say
+// http:// because of it: a token that anyone following the link as written
+// would have sent unprotected. Only a developer's own machine is http.
+func TestTheEnrolmentLinkIsHTTPSExceptOnADevelopersOwnMachine(t *testing.T) {
+	for host, want := range map[string]string{
+		"babbangona.mdm.vlumesec.com": "https",
+		"mdm.kalesi.example:8443":     "https",
+		"localhost:8100":              "http",
+		"127.0.0.1:8100":              "http",
+		"kalesi.localhost":            "http",
+	} {
+		r := httptest.NewRequest("GET", "http://"+host+"/", nil)
+		r.Host = host
+		if got := publicScheme(r); got != want {
+			t.Errorf("%s: scheme %q, want %q", host, got, want)
+		}
+	}
+}
+
+// The Enrolments page is for computers that run the agent. Asking it for an
+// Android phone sends the person to the Android page and makes nothing: a
+// token made here is a link that does nothing on a phone.
+func TestAnAndroidPhoneIsSentToTheAndroidPageNotGivenAnAgentToken(t *testing.T) {
+	f := newFixture(t)
+	before := adminCount(t, `SELECT count(*) FROM enrolments`)
+	rec := postForm(t, f, "a-itadmin", "/enrolments", url.Values{
+		"label": {"Kemi's phone"}, "ownership": {"personal"}, "os_family": {"android"}})
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/android") ||
+		!strings.Contains(said(rec), "Android page") {
+		t.Fatalf("an Android request on the Enrolments page: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if adminCount(t, `SELECT count(*) FROM enrolments`) != before {
+		t.Fatal("an agent token was made for an Android phone")
+	}
+}
+
+// A computer is given the command to run, with the token on standard input
+// and never on the command line, and told in words why there is no QR code.
+func TestTheLinkPageGivesTheCommandAndExplainsWhyThereIsNoQRCode(t *testing.T) {
+	f := newFixture(t)
+	rec := postForm(t, f, "a-itadmin", "/enrolments", url.Values{
+		"label": {"Kemi's laptop"}, "ownership": {"company"}, "os_family": {"macos"}})
+	body := rec.Body.String()
+	if rec.Code != 200 {
+		t.Fatalf("%d", rec.Code)
+	}
+	for _, want := range []string{"agent -server https://" + hostA + " -dir /var/lib/mdm enrol", "echo &#39;", "not a web page", "no QR code"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the page does not contain %q", want)
+		}
+	}
+	if strings.Contains(body, "-token ") {
+		t.Error("the command puts the token on the command line")
 	}
 }

@@ -17,10 +17,26 @@
       <button type="button" data-copy="enrol-link"
               style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
     </div>
-    <p class="sub" style="font-size:12px;margin:6px 0 0">This is for a laptop or desktop running your
-    organisation&rsquo;s device agent, and it points at this console&rsquo;s own address. Android phones
-    are invited from the Android page instead, with a link from Google.</p>
+    <p class="sub" style="font-size:12px;margin:6px 0 0"><strong>This link is not a web page.</strong> It is for
+    the device agent on a computer, and opened in a browser it only shows a sign-in page. For that
+    reason there is no QR code here: a phone could not use it. Android phones are set up from the
+    <a href="/android">Android page</a>, with a join link and a QR code.</p>
   </div>
+
+  {{if .NewCommand}}
+  <div class="card" style="margin-bottom:18px">
+    <p class="k">On the computer, run this</p>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <textarea id="enrol-cmd" readonly rows="2" onclick="this.select()"
+        style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--page)">{{.NewCommand}}</textarea>
+      <button type="button" data-copy="enrol-cmd"
+              style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
+    </div>
+    <p class="sub" style="font-size:12px;margin:6px 0 0">The agent must already be installed on the computer. The token goes in on
+    standard input, not on the command line, where other people on the machine could read it. It is shown
+    here once.</p>
+  </div>
+  {{end}}
   <script>
     document.querySelectorAll('[data-copy]').forEach(function (b) {
       b.addEventListener('click', function () {

@@ -224,12 +224,30 @@ func (g *Gateway) createEnrolment(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// enrolURL is the link for a device agent. Its scheme is https unless the
+// request came to a loopback address, a developer's own machine. It used to
+// be http whenever the connection was not TLS at this process, which is
+// always, behind a load balancer that ends TLS, so every link an operator was
+// shown began http:// and sent the token across the internet unprotected if
+// anyone followed it as written.
 func (g *Gateway) enrolURL(r *http.Request, token string) string {
-	scheme := "https"
-	if r.TLS == nil {
-		scheme = "http"
+	return publicScheme(r) + "://" + r.Host + "/enrol?t=" + token
+}
+
+// publicScheme says how this site is reached from outside.
+func publicScheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
 	}
-	return scheme + "://" + r.Host + "/enrol?t=" + token
+	host := r.Host
+	if i := strings.LastIndex(host, ":"); i > 0 && !strings.HasSuffix(host, "]") {
+		host = host[:i]
+	}
+	host = strings.Trim(strings.ToLower(host), "[]")
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" || strings.HasSuffix(host, ".localhost") {
+		return "http"
+	}
+	return "https"
 }
 
 func (g *Gateway) listEnrolments(w http.ResponseWriter, r *http.Request) {

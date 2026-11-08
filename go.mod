@@ -9,6 +9,7 @@ require (
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.1
+	github.com/makiuchi-d/gozxing v0.1.1
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/russellhaering/goxmldsig v1.4.0
 	golang.org/x/crypto v0.33.0
@@ -26,4 +27,5 @@ require (
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )

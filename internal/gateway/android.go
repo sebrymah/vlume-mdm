@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"html/template"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	"platform/internal/data"
 	"platform/internal/directory"
 	"platform/internal/notify"
+	"platform/internal/qr"
 	"platform/internal/tenantclaim"
 )
 
@@ -301,12 +304,38 @@ func (g *Gateway) consoleAndroidToken(w http.ResponseWriter, r *http.Request, re
 		}
 		out.NewToken, out.NewTokenQR, out.NewTokenFor = tok.Value, tok.QRCode, label
 		out.NewTokenLink, out.NewTokenOwnership = android.EnrolLink(tok.Value), ownership
+		out.NewTokenQRImage, out.NewTokenQRKind = enrolQR(ownership, tok, g.log)
 		if wantMail && mailErr == "" {
 			out.NewTokenMailed = mailTo
 		}
 		out.NewTokenMailError = mailErr
 		return nil
 	})
+}
+
+// enrolQR is the QR code for a token, and what kind it is.
+//
+// The two kinds are not interchangeable. A personal phone is already set
+// up, so the way in is Google's link, which the camera app opens. A company
+// phone is new or reset and sits at the welcome screen, which has no browser
+// and no camera app: it reads Google's provisioning payload after six taps.
+// Showing a link-QR for a company phone is a code that scans and then
+// leads nowhere. If Google gave no payload there is no QR for a company
+// phone, and none is drawn.
+func enrolQR(ownership string, tok android.EnrollmentToken, log *slog.Logger) (template.URL, string) {
+	text, kind := android.EnrolLink(tok.Value), "link"
+	if ownership != "personal" {
+		text, kind = tok.QRCode, "provision"
+	}
+	if text == "" {
+		return "", ""
+	}
+	img, err := qr.DataURL(text)
+	if err != nil {
+		log.Error("enrolment QR", "kind", kind, "err", err)
+		return "", ""
+	}
+	return img, kind
 }
 
 // inviteMessage is the email a person gets with their enrolment link. It

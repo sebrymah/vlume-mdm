@@ -838,6 +838,13 @@ type Android struct {
 	// NewTokenLink is Google's enrolment link for it: the thing to send.
 	NewTokenLink      string
 	NewTokenOwnership string
+	// NewTokenQRImage is the QR code to scan, as a data: URL, and
+	// NewTokenQRKind says what it holds: "link" (a personal phone's camera
+	// opens it) or "provision" (a company phone's welcome screen reads it
+	// after six taps). Empty when there is nothing right to draw, which is
+	// better than drawing the wrong thing.
+	NewTokenQRImage template.URL
+	NewTokenQRKind  string
 	// NewTokenMailed is who the link was emailed to; NewTokenMailError
 	// says why it was not, when it was asked for and could not go.
 	NewTokenMailed    string

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"platform/internal/android"
+	"platform/internal/qr/qrtest"
 )
 
 // Android Enterprise, end to end against the fake Google: bind, deliver the
@@ -440,5 +442,62 @@ func TestAnInvitationCarriesGooglesLinkAndGoesToThePerson(t *testing.T) {
 	}
 	if len(f.mail.Received()) != before+1 {
 		t.Fatal("an email left for a bad address")
+	}
+}
+
+// The QR code on an invitation is scanned the way a phone scans it, and what
+// comes out is the right thing for that kind of phone.
+func TestTheInvitationShowsAQRThatScansToTheRightThing(t *testing.T) {
+	f := newFixture(t)
+	baseline(t, f)
+	if msg := bindAndroid(t, f, "a-super"); !strings.Contains(msg, "Bound") {
+		t.Fatalf("bind: %q", msg)
+	}
+
+	// A personal phone: the camera opens Google's link.
+	rec := postForm(t, f, "a-itadmin", "/android/tokens", url.Values{
+		"label": {"Kemi's phone"}, "assigned_to": {"kemi@kalesi.example"}, "ownership": {"personal"}})
+	body := rec.Body.String()
+	m := androidTokenRE.FindStringSubmatch(body)
+	if rec.Code != 200 || m == nil {
+		t.Fatalf("token page: %d", rec.Code)
+	}
+	imgs := qrtest.PageImages(body)
+	if len(imgs) != 1 {
+		t.Fatalf("a personal invitation shows %d QR codes, want 1", len(imgs))
+	}
+	link := "https://enterprise.google.com/android/enroll?et=" + m[1]
+	if got := qrtest.ScanDataURL(t, imgs[0]); got != link {
+		t.Fatalf("the QR code scans to %q, not Google's link %q", got, link)
+	}
+	if !strings.Contains(body, "camera") {
+		t.Fatal("the page does not say what to do with a link QR code")
+	}
+
+	// A company phone: the welcome screen reads Google's provisioning payload.
+	rec = postForm(t, f, "a-itadmin", "/android/tokens", url.Values{
+		"label": {"Field phone 7"}, "assigned_to": {"stores@kalesi.example"}, "ownership": {"company"}})
+	body = rec.Body.String()
+	m = androidTokenRE.FindStringSubmatch(body)
+	if rec.Code != 200 || m == nil {
+		t.Fatalf("company token page: %d", rec.Code)
+	}
+	imgs = qrtest.PageImages(body)
+	if len(imgs) != 1 {
+		t.Fatalf("a company invitation shows %d QR codes, want 1", len(imgs))
+	}
+	got := qrtest.ScanDataURL(t, imgs[0])
+	if strings.Contains(got, "enterprise.google.com") {
+		t.Fatalf("a company phone was given a link QR code, which a welcome screen cannot use: %q", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(got), &payload); err != nil {
+		t.Fatalf("the company QR code is not Google's provisioning payload: %q", got)
+	}
+	if !strings.Contains(got, m[1]) {
+		t.Fatalf("the provisioning payload does not carry this token (%s): %q", m[1], got)
+	}
+	if !strings.Contains(body, "six times") {
+		t.Fatal("the page does not tell the person to tap six times")
 	}
 }

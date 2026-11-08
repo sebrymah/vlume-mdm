@@ -1412,6 +1412,26 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	if false && reservedSlugs[s] {"
   ;;
 
+--break-qrpayload)
+  # The QR code holds the bare token instead of Google's link, so a camera
+  # reads a string of letters and nothing opens.
+  echo "==> NEGATIVE CONTROL: the QR code carries the bare token"
+  patch internal/gateway/android.go \
+    "	text, kind := android.EnrolLink(tok.Value), \"link\"" \
+    "	text, kind := tok.Value, \"link\""
+  ;;
+
+--break-qrowner)
+  # A company phone is shown the link QR code. It scans, and leads nowhere:
+  # a welcome screen has no browser to open it in.
+  echo "==> NEGATIVE CONTROL: a company phone gets the personal-phone QR code"
+  patch internal/gateway/android.go \
+    "	if ownership != \"personal\" {
+		text, kind = tok.QRCode, \"provision\"" \
+    "	if false {
+		text, kind = tok.QRCode, \"provision\""
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1470,7 +1490,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

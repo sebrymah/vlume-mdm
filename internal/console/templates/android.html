@@ -71,10 +71,39 @@
   </div>
 
   {{if .NewToken}}
-  <div class="card" style="border-color:var(--brand)">
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #invite-card, #invite-card * { visibility: visible; }
+      #invite-card { position: absolute; left: 0; top: 0; width: 100%; border: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+  <div class="card" id="invite-card" style="border-color:var(--brand)">
     <p style="margin:0 0 6px"><strong>Invitation for {{.NewTokenFor}}.</strong> Shown once.
     {{if .NewTokenMailed}}Emailed to <strong>{{.NewTokenMailed}}</strong>.{{end}}
     {{if .NewTokenMailError}}<span style="color:var(--bad)">The email could not be sent ({{.NewTokenMailError}}); pass the link on yourself.</span>{{end}}</p>
+
+    {{if .NewTokenQRImage}}
+    <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin:12px 0">
+      <img src="{{.NewTokenQRImage}}" alt="QR code to enrol {{.NewTokenFor}}" style="max-width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:6px;background:#fff">
+      <div style="flex:1 1 240px">
+        <p class="k" style="margin:0 0 4px">Scan to enrol</p>
+        {{if eq .NewTokenQRKind "link"}}
+        <p style="margin:0 0 6px">Point the phone's camera at this code and tap the link that appears. It installs
+        Android Device Policy from Google Play and sets up a work profile.</p>
+        {{else}}
+        <p style="margin:0 0 6px">For a <strong>new or freshly reset</strong> company phone. On the first welcome
+        screen, tap the screen <strong>six times</strong> in the same spot. A QR scanner opens. Point it at this
+        code and the phone sets itself up.</p>
+        <p class="sub" style="font-size:12px;margin:0">The camera app will not read this one. It is for the welcome
+        screen only.</p>
+        {{end}}
+        <button type="button" class="no-print" onclick="window.print()"
+                style="margin-top:10px;font:inherit;font-size:12px;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Print this code</button>
+      </div>
+    </div>
+    {{end}}
 
     <p class="k" style="margin:10px 0 4px">The link to send</p>
     <div style="display:flex;gap:8px;align-items:center">
@@ -87,8 +116,8 @@
       {{if eq .NewTokenOwnership "personal"}}Opened on the phone, it installs Android Device Policy from Google Play and
       sets up a work profile. Send it by email or chat; it is Google's address, so it works from anywhere.
       {{else}}A company token is for a new or freshly reset phone only: at the first Google sign-in, type
-      <code>afw#setup</code> as the email and enter the code below when asked, or scan a QR made from the
-      payload below at the welcome screen. It tells Google the phone carries no personal use, so a phone
+      <code>afw#setup</code> as the email and enter the code below when asked, or scan the QR code above at the
+      welcome screen. It tells Google the phone carries no personal use, so a phone
       already in use will refuse it ("your IT admin doesn't allow a work profile"); for that phone make a
       Personal token instead.{{end}} The link works once and expires in 7 days.</p>
 

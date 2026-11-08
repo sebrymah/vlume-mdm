@@ -156,3 +156,31 @@ func TestTheAndroidLibraryTranslates(t *testing.T) {
 		t.Fatalf("only %d Android policies in the library", n)
 	}
 }
+
+// The lock a phone is asked for does not depend on the order the rules
+// happen to be read in. A length rule asks for a PIN and a passcode rule for
+// any lock; both together must always give the PIN. Go reads a map in a new
+// random order each time, so one run proves little and two hundred do.
+func TestTheLockQualityDoesNotDependOnTheOrderOfTheRules(t *testing.T) {
+	rules := policy.Rules{
+		policy.PasscodeRequired:       {Kind: policy.PasscodeRequired, Bool: true},
+		policy.PasscodeMinLength:      {Kind: policy.PasscodeMinLength, Num: 8},
+		policy.DiskEncryptionRequired: {Kind: policy.DiskEncryptionRequired, Bool: true},
+		policy.ScreenLockTimeoutMax:   {Kind: policy.ScreenLockTimeoutMax, Num: 300},
+	}
+	for i := 0; i < 200; i++ {
+		m := sent(t, rules, nil)
+		if got, _ := at(m, "passwordRequirements.passwordQuality"); got != "NUMERIC" {
+			t.Fatalf("run %d: the lock quality was %v, want NUMERIC", i, got)
+		}
+	}
+	// A passcode rule alone asks for any lock.
+	only := policy.Rules{policy.PasscodeRequired: {Kind: policy.PasscodeRequired, Bool: true}}
+	if got, _ := at(sent(t, only, nil), "passwordRequirements.passwordQuality"); got != "SOMETHING" {
+		t.Fatalf("a passcode rule alone gave %v", got)
+	}
+	// And a setting that asks for more than a rule is not weakened by it.
+	if got, _ := at(sent(t, rules, catalog.Values{"android.password_quality": "COMPLEX"}), "passwordRequirements.passwordQuality"); got != "COMPLEX" {
+		t.Fatalf("a stricter setting was weakened to %v", got)
+	}
+}

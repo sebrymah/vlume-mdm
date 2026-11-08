@@ -95,14 +95,11 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 	for kind, r := range rules {
 		switch kind {
 		case policy.PasscodeRequired:
-			if r.Bool {
-				fromRules["android.password_quality"] = "SOMETHING"
-			}
+			// The quality is worked out below, once, from both rules. Setting
+			// it here would make the answer depend on which rule the map
+			// happens to hand over first.
 		case policy.PasscodeMinLength:
 			fromRules["android.password_min_length"] = r.Num
-			// A minimum length only means something for a quality that
-			// has a length.
-			fromRules["android.password_quality"] = "NUMERIC"
 		case policy.DiskEncryptionRequired:
 			if r.Bool {
 				fromRules["android.encryption_required"] = true
@@ -117,6 +114,15 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 			// set by policy. All three are judged on sync.
 			undelivered = append(undelivered, string(kind))
 		}
+	}
+	// A minimum length only means something for a quality that has a length,
+	// so a length rule asks for a PIN; a passcode rule alone asks for any lock.
+	// Decided from the rules themselves, never from the order they are read in:
+	// a stronger answer must not be overwritten by a weaker one.
+	if _, ok := rules[policy.PasscodeMinLength]; ok {
+		fromRules["android.password_quality"] = "NUMERIC"
+	} else if r, ok := rules[policy.PasscodeRequired]; ok && r.Bool {
+		fromRules["android.password_quality"] = "SOMETHING"
 	}
 	merged := catalog.Merge(fromRules, cfg)
 

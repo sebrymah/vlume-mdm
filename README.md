@@ -218,6 +218,7 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-configunknown # skip an unknown setting instead of refusing it, expect a FAILURE
 ./run_go.sh --break-libraryonce   # add a ready-made policy twice, expect a FAILURE
 ./run_go.sh --break-personalpolicy # enrol a work-profile phone onto the company policy, expect a FAILURE
+./run_go.sh --break-passcodeorder # let the lock a phone is asked for depend on the order rules are read in, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE

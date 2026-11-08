@@ -623,7 +623,23 @@ a test and a control:
   company phone (`--break-selfowner`).
 - **Leavers.** Somebody the platform has been told has left is refused, judged
   by their subject and not their address, because an address passes to the next
-  hire and the next hire is not the leaver (`--break-selfleaver`).
+  hire and the next hire is not the leaver (`--break-selfleaver`). One case the
+  subject cannot cover: HR can name somebody who never signed in, a record with
+  an address and no subject. That record cannot tell the leaver from a later hire
+  given the same address, so whoever signs in with it is refused and an
+  administrator makes the token by hand.
+- **The address is only as honest as the provider.** An address the provider
+  marks unverified (`email_verified` false) is not used, and the provider's own
+  fallbacks (`preferred_username`, `upn`) are used instead (`--break-unverifiedemail`).
+  A provider that sends no `email_verified` at all is believed, because most
+  do not send it. **What that leaves open:** at a provider where people can edit
+  their own email, and which does not send `email_verified` (Microsoft Entra's
+  `email` claim is the known case), a person could present somebody else's
+  address and get a phone recorded against it. It is attributable (the token
+  records who really asked, and the request is audited), and it shows on the
+  other person's page, but it is not prevented. The fix is per provider, by
+  telling the tenant's identity setup to read the address from a claim the
+  provider controls, and is not built.
 
 The permission is new, `device.enrol_own`, with its reason written beside it
 in `authz.go`: `device.enrol` lets its holder invite any device for anyone and

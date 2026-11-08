@@ -84,12 +84,23 @@ func SelfAsked(ctx context.Context, tx *data.Tx, subject string, since time.Time
 	return n, err
 }
 
-// SubjectHasLeft says whether the platform has been told this person left.
-// It goes by the subject, the identifier a provider never reuses, and not by
-// the address: an address passes to the next hire, and the next hire is not
-// the leaver.
-func SubjectHasLeft(ctx context.Context, tx *data.Tx, subject string) (bool, error) {
+// HasLeft says whether the platform has been told this person left.
+//
+// By subject first, the identifier a provider never reuses: an address passes
+// to the next hire, and the next hire is not the leaver.
+//
+// There is one case the subject cannot cover. HR can name somebody who has
+// never signed in, and that record holds an address and no subject. Such a
+// record cannot tell the leaver from a later hire given the same address, so
+// it is read the cautious way: whoever signs in with that address is refused,
+// and an administrator, who can tell them apart, makes the token by hand. A
+// wrongly refused hire costs one message to IT; a wrongly admitted leaver
+// enrols a phone into the organisation.
+func HasLeft(ctx context.Context, tx *data.Tx, subject, email string) (bool, error) {
 	var left bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM people WHERE subject = $1 AND left_at IS NOT NULL)`, subject).Scan(&left)
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM people WHERE left_at IS NOT NULL AND subject = $1)
+		    OR EXISTS (SELECT 1 FROM people WHERE left_at IS NOT NULL AND subject = '' AND $2 <> '' AND email = lower($2))`,
+		subject, email).Scan(&left)
 	return left, err
 }

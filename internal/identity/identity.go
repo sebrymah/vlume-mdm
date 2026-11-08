@@ -21,8 +21,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
+
 	"github.com/jackc/pgx/v5"
 
 	"platform/internal/authz"
@@ -182,6 +184,31 @@ func groupsFrom(all map[string]any, claim string) []string {
 	default:
 		return nil
 	}
+}
+
+// emailFrom picks the person's address from an identity token.
+//
+// An address the provider itself marks unverified (email_verified false) is
+// not an address to hang a person on: it is whatever the person typed into
+// their own profile. It is skipped, and the fallbacks the provider controls
+// (preferred_username, upn) are used instead. Platform features that turn an
+// address into a person (their own devices, a code for their own phone) are
+// only as honest as this function. A provider that sends no email_verified at
+// all is believed, because most do not send it and the alternative is that
+// nobody could sign in; see the README on what that leaves open.
+func emailFrom(all map[string]any) string {
+	keys := []string{"email", "preferred_username", "upn"}
+	switch v := all["email_verified"].(type) {
+	case bool:
+		if !v {
+			keys = keys[1:]
+		}
+	case string:
+		if strings.EqualFold(v, "false") {
+			keys = keys[1:]
+		}
+	}
+	return stringFrom(all, keys...)
 }
 
 func stringFrom(all map[string]any, keys ...string) string {

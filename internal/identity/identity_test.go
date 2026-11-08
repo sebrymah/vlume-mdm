@@ -176,3 +176,23 @@ func TestAnIncompleteConfigIsRefusedBeforeAnyNetworkCall(t *testing.T) {
 		}
 	}
 }
+
+// An address the provider says is unverified is not used. It is what the
+// person typed into their own profile, and a feature that turns an address
+// into a person would then be a way to become somebody else.
+func TestAnUnverifiedEmailIsNotAnAddress(t *testing.T) {
+	for name, tc := range map[string]struct {
+		claims map[string]any
+		want   string
+	}{
+		"verified":                  {map[string]any{"email": "a@kalesi.example", "email_verified": true}, "a@kalesi.example"},
+		"no verified claim at all":  {map[string]any{"email": "a@kalesi.example"}, "a@kalesi.example"},
+		"unverified, boolean":       {map[string]any{"email": "ceo@kalesi.example", "email_verified": false}, ""},
+		"unverified, as text":       {map[string]any{"email": "ceo@kalesi.example", "email_verified": "false"}, ""},
+		"unverified, falls back to": {map[string]any{"email": "ceo@kalesi.example", "email_verified": false, "upn": "me@kalesi.example"}, "me@kalesi.example"},
+	} {
+		if got := emailFrom(tc.claims); got != tc.want {
+			t.Errorf("%s: got %q, want %q", name, got, tc.want)
+		}
+	}
+}

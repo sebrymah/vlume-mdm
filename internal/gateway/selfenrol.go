@@ -80,7 +80,7 @@ func (g *Gateway) consoleSelfEnrolStart(w http.ResponseWriter, r *http.Request, 
 				problem = "Android phones cannot be set up here yet. Ask your IT team."
 				return nil
 			}
-			left, err := android.SubjectHasLeft(ctx, tx, res.Subject)
+			left, err := android.HasLeft(ctx, tx, res.Subject, email)
 			if err != nil {
 				return err
 			}

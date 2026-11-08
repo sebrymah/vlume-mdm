@@ -1473,6 +1473,16 @@ GRANT SELECT ON devices TO mdm_operator;"
     "			if left && false {"
   ;;
 
+--break-unverifiedemail)
+  # An address the provider marks unverified is used as the person's address.
+  # Whoever can edit their own profile at the provider could then become
+  # somebody else here.
+  echo "==> NEGATIVE CONTROL: an unverified email is believed"
+  patch internal/identity/identity.go \
+    "		if !v {" \
+    "		if !v && false {"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1531,7 +1541,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

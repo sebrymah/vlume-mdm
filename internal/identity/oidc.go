@@ -165,7 +165,7 @@ func (o *OIDC) Exchange(ctx context.Context, cfg Config, code, verifier, nonce s
 
 	c := Claims{
 		Subject: idToken.Subject,
-		Email:   stringFrom(all, "email", "preferred_username", "upn"),
+		Email:   emailFrom(all),
 		Name:    stringFrom(all, "name", "given_name"),
 		Groups:  groupsFrom(all, cfg.RoleClaim),
 	}

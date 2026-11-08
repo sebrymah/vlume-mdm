@@ -279,6 +279,21 @@ func TestSomeoneWhoHasLeftCannotEnrolAPhone(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("the next hire with a reused address was refused: %d %q", rec.Code, said(rec))
 	}
+
+	// HR can name somebody who never signed in: a record with an address and
+	// no subject. Whoever then signs in with that address is refused, because
+	// the record cannot say whether it is the leaver or a later hire, and the
+	// cautious reading is the one that keeps a leaver's phone out.
+	exec(t, `INSERT INTO people (tenant_id, subject, email, source, left_at, left_by)
+	         VALUES ($1, '', 'y.never@kalesi.example', 'hr', now(), 'hr-feed')`, tenantA)
+	issued = len(f.google.TokenUsage)
+	rec = f.asPerson(t, "POST", hostA, "/enrol/start", tenantA, "y.never", authz.Employee, "Y.Never@kalesi.example", url.Values{}, desktopUA)
+	if rec.Code != http.StatusSeeOther || !strings.Contains(said(rec), "account has been closed") {
+		t.Fatalf("a leaver HR named before they ever signed in: %d %q", rec.Code, said(rec))
+	}
+	if len(f.google.TokenUsage) != issued {
+		t.Fatal("Google was asked for a token for a leaver known only by address")
+	}
 }
 
 func TestWithNoAddressThereIsNoCode(t *testing.T) {

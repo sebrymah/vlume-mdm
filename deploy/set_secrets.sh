@@ -24,7 +24,10 @@ bytes="$(printf '%s' "$seal" | openssl base64 -d -A 2>/dev/null | wc -c | tr -d 
 [ "$bytes" = "32" ] || { echo "That is not a valid sealing key (it decodes to $bytes bytes, not 32). Nothing was set."; exit 1; }
 
 host="$(plain 'Supabase Session pooler host' 'aws-0-<region>.pooler.supabase.com')"
-case "$host" in *"<"*|*">"*|"") echo "Type the real host, from your working connection string."; exit 1;; esac
+case "$host" in *"<"*|*">"*|"") echo "Type the real host, from Supabase: Connect, Session pooler."; exit 1;; esac
+case "$host" in db.*) echo "That is the DIRECT address (it starts db.). It cannot be reached from Fly or from Docker on a Mac. Use the Session pooler host: aws-...pooler.supabase.com. Nothing was set."; exit 1;; esac
+case "$host" in *.pooler.supabase.com) ;; *) echo "Expected a host ending in .pooler.supabase.com (Supabase, Connect, Session pooler). Nothing was set."; exit 1;; esac
+case "$host" in *:*|*/*|*@*) echo "Type only the host, with no port, slash or @. Nothing was set."; exit 1;; esac
 ref="$(plain 'Supabase project reference' 'jpzotcxlylctfzywngvz')"
 apppw="$(secret 'Password for mdm_app (the 40 characters the setup printed)')"; clean mdm_app "$apppw"
 oppw="$(secret 'Password for mdm_operator (the other 40 characters)')"; clean mdm_operator "$oppw"

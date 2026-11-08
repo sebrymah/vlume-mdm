@@ -24,12 +24,13 @@ func guidedBody(r *http.Request) ([]byte, error) {
 	body := map[string]any{}
 
 	// What the policy judges a device by.
-	for _, k := range []string{"passcode_required", "disk_encryption_required", "firewall_required", "jailbreak_blocked"} {
+	for _, k := range []string{"passcode_required", "disk_encryption_required", "firewall_required", "jailbreak_blocked",
+		"debugging_blocked", "unknown_sources_blocked", "play_protect_required", "integrity_required"} {
 		if r.FormValue("rule."+k) != "" {
 			body[k] = true
 		}
 	}
-	for _, k := range []string{"passcode_min_length", "screen_lock_timeout_max"} {
+	for _, k := range []string{"passcode_min_length", "screen_lock_timeout_max", "security_patch_max_age_days"} {
 		if v := strings.TrimSpace(r.FormValue("rule." + k)); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n <= 0 {
@@ -70,6 +71,16 @@ func guidedBody(r *http.Request) ([]byte, error) {
 		case catalog.Choice, catalog.Text:
 			if v != "" {
 				cfg[s.Key] = v
+			}
+		case catalog.List:
+			var items []string
+			for _, line := range strings.Split(r.FormValue(name), "\n") {
+				if line = strings.TrimSpace(line); line != "" {
+					items = append(items, line)
+				}
+			}
+			if len(items) > 0 {
+				cfg[s.Key] = items
 			}
 		case catalog.Apps:
 			list, err := parseAppLines(r.FormValue(name))

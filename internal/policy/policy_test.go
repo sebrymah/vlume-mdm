@@ -84,6 +84,11 @@ func TestEveryRuleInTheCatalogueParses(t *testing.T) {
 		OSVersionMin:           `{"os_version_min": "15.1"}`,
 		FirewallRequired:       `{"firewall_required": true}`,
 		JailbreakBlocked:       `{"jailbreak_blocked": true}`,
+		SecurityPatchMaxAge:    `{"security_patch_max_age_days": 30}`,
+		DebuggingBlocked:       `{"debugging_blocked": true}`,
+		UnknownSourcesBlocked:  `{"unknown_sources_blocked": true}`,
+		PlayProtectRequired:    `{"play_protect_required": true}`,
+		IntegrityRequired:      `{"integrity_required": true}`,
 	}
 	for _, k := range Kinds() {
 		body, ok := samples[k]
@@ -430,5 +435,97 @@ func TestScopeSaysWhoItIsForInWords(t *testing.T) {
 		if got := scope.Describe(); got != want {
 			t.Fatalf("got %q, want %q", got, want)
 		}
+	}
+}
+
+// ---------------------------------------------- what an Android phone says
+
+// The security patch window is judged in whole days from the date Android
+// reports: exactly as old as the limit passes, a day older fails, a device that
+// says nothing is unknown, and a date nobody can read is not a pass.
+func TestTheSecurityPatchWindowIsJudgedInWholeDays(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	r := rules(t, "Window", `{"security_patch_max_age_days": 30}`)
+	cases := []struct {
+		level string
+		state string
+	}{
+		{"2026-10-09", Compliant},    // 30 days old: the limit itself passes
+		{"2026-10-08", NotCompliant}, // 31 days
+		{"2026-11-08", Compliant},
+		{"2026-10", NotCompliant}, // a month only reads as its first day: 38 days
+		{"", Unknown},
+		{"last Tuesday", Unknown},
+	}
+	for _, c := range cases {
+		v := Evaluate(r, Report{PatchLevel: c.level}, now, now)
+		if v.State != c.state {
+			t.Errorf("patch level %q: %s, want %s (%v)", c.level, v.State, c.state, v.Findings)
+		}
+	}
+	// And a looser policy cannot relax a stricter one.
+	merged := Merge(rules(t, "A", `{"security_patch_max_age_days": 30}`), rules(t, "B", `{"security_patch_max_age_days": 7}`))
+	if merged[SecurityPatchMaxAge].Num != 7 {
+		t.Fatalf("the merge kept %d days", merged[SecurityPatchMaxAge].Num)
+	}
+}
+
+// Debugging and unknown sources are rules about things being OFF, so the sense
+// is turned round: the device passes when it says off, fails when it says on,
+// and is unknown when it says nothing.
+func TestRulesAboutThingsBeingOffAreJudgedTheRightWayRound(t *testing.T) {
+	now := time.Now()
+	for _, tc := range []struct {
+		body string
+		set  func(*bool) Report
+	}{
+		{`{"debugging_blocked": true}`, func(v *bool) Report { return Report{DebuggingEnabled: v} }},
+		{`{"unknown_sources_blocked": true}`, func(v *bool) Report { return Report{UnknownSourcesEnabled: v} }},
+	} {
+		r := rules(t, "Off", tc.body)
+		for _, c := range []struct {
+			v     *bool
+			state string
+		}{{b(false), Compliant}, {b(true), NotCompliant}, {nil, Unknown}} {
+			if got := Evaluate(r, tc.set(c.v), now, now).State; got != c.state {
+				t.Errorf("%s with %v: %s, want %s", tc.body, c.v, got, c.state)
+			}
+		}
+	}
+}
+
+// Play Protect and the integrity check are rules about things being ON.
+func TestPlayProtectAndIntegrityAreJudgedLikeAnyRequiredSwitch(t *testing.T) {
+	now := time.Now()
+	for _, tc := range []struct {
+		body string
+		set  func(*bool) Report
+	}{
+		{`{"play_protect_required": true}`, func(v *bool) Report { return Report{PlayProtectEnabled: v} }},
+		{`{"integrity_required": true}`, func(v *bool) Report { return Report{IntegrityOK: v} }},
+	} {
+		r := rules(t, "On", tc.body)
+		for _, c := range []struct {
+			v     *bool
+			state string
+		}{{b(true), Compliant}, {b(false), NotCompliant}, {nil, Unknown}} {
+			if got := Evaluate(r, tc.set(c.v), now, now).State; got != c.state {
+				t.Errorf("%s with %v: %s, want %s", tc.body, c.v, got, c.state)
+			}
+		}
+	}
+	// A rule set to false asks for nothing.
+	if got := Evaluate(rules(t, "x", `{"debugging_blocked": false, "play_protect_required": false}`), Report{}, now, now).State; got != Compliant {
+		t.Fatalf("a rule set to false was held against the device: %s", got)
+	}
+}
+
+// A failure outranks a gap: a phone with debugging on and no patch date is
+// not compliant and not unknown, because we already know enough to act.
+func TestAKnownFailureOutranksAMissingFieldOnAPhone(t *testing.T) {
+	now := time.Now()
+	r := rules(t, "Both", `{"debugging_blocked": true, "security_patch_max_age_days": 30}`)
+	if got := Evaluate(r, Report{DebuggingEnabled: b(true)}, now, now).State; got != NotCompliant {
+		t.Fatalf("got %s", got)
 	}
 }

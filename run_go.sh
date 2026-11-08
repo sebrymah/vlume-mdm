@@ -1644,6 +1644,56 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	if false && in.OSFamily == \"android\" {"
   ;;
 
+--break-patchage)
+  # The security patch window is not enforced.
+  echo "==> NEGATIVE CONTROL: a phone with an old security patch passes"
+  patch internal/policy/policy.go \
+    "age > req.Num {" \
+    "age > 1<<30 {"
+  ;;
+
+--break-debugread)
+  # Developer options on is not read as debugging on.
+  echo "==> NEGATIVE CONTROL: developer options on is not counted as debugging"
+  patch internal/android/translate.go \
+    "|| (d.DevSettingsEnabled != nil && *d.DevSettingsEnabled)" \
+    "|| false"
+  ;;
+
+--break-offsense)
+  # A rule about a thing being off is judged the wrong way round.
+  echo "==> NEGATIVE CONTROL: a phone with debugging on passes and one with it off fails"
+  patch internal/policy/policy.go \
+    "	case *got:
+		note(found(req, failure, false))" \
+    "	case !*got:
+		note(found(req, failure, false))"
+  ;;
+
+--break-integrity)
+  # An at-risk device is not read as failing its integrity check.
+  echo "==> NEGATIVE CONTROL: an at-risk phone is not counted as failing integrity"
+  patch internal/android/translate.go \
+    "	case \"AT_RISK\", \"POTENTIAL_RISK\":" \
+    "	case \"NO_SUCH_POSTURE\":"
+  ;;
+
+--break-accessibility)
+  # The list of allowed accessibility apps wins over the system-only switch.
+  echo "==> NEGATIVE CONTROL: accessibility settings are settled by the weaker one"
+  patch internal/android/translate.go \
+    "	if v, _ := merged[\"android.accessibility_system_only\"].(bool); v {" \
+    "	if false {"
+  ;;
+
+--break-listmerge)
+  # An allow-list is the union of two policies, not the intersection.
+  echo "==> NEGATIVE CONTROL: two policies' allow-lists are joined instead of intersected"
+  patch internal/catalog/catalog.go \
+    "		return mergeLists(a.([]string), b.([]string), false)" \
+    "		return mergeLists(a.([]string), b.([]string), true)"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1702,7 +1752,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

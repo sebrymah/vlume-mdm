@@ -236,12 +236,12 @@ type wireDevice struct {
 	} `json:"hardwareInfo"`
 	SoftwareInfo struct {
 		AndroidVersion string `json:"androidVersion"`
+		// SecurityPatchLevel is the date of the phone's security patch.
+		SecurityPatchLevel string `json:"securityPatchLevel"`
 	} `json:"softwareInfo"`
-	DeviceSettings *struct {
-		IsDeviceSecure    bool   `json:"isDeviceSecure"`
-		IsEncrypted       bool   `json:"isEncrypted"`
-		VerifiedBootState string `json:"verifiedBootState"`
-	} `json:"deviceSettings"`
+	DeviceSettings *wireSettings `json:"deviceSettings"`
+	// SecurityPosture is Google's own reading of how safe the phone is.
+	SecurityPosture      *wirePosture `json:"securityPosture"`
 	NonComplianceDetails []struct {
 		SettingName string `json:"settingName"`
 		Reason      string `json:"nonComplianceReason"`
@@ -253,13 +253,35 @@ type wireDevice struct {
 	} `json:"applicationReports"`
 }
 
+// wireSettings is the part of a device report that says how it is set. The
+// switches are pointers because "Google did not say" is not "it is off".
+type wireSettings struct {
+	IsDeviceSecure             bool   `json:"isDeviceSecure"`
+	IsEncrypted                bool   `json:"isEncrypted"`
+	VerifiedBootState          string `json:"verifiedBootState"`
+	ADBEnabled                 *bool  `json:"adbEnabled"`
+	DevelopmentSettingsEnabled *bool  `json:"developmentSettingsEnabled"`
+	VerifyAppsEnabled          *bool  `json:"verifyAppsEnabled"`
+	UnknownSourcesEnabled      *bool  `json:"unknownSourcesEnabled"`
+}
+
+type wirePosture struct {
+	DevicePosture string `json:"devicePosture"` // SECURE, AT_RISK, POTENTIAL_RISK
+}
+
 func (d wireDevice) device() Device {
 	out := Device{
 		Name: d.Name, EnrollmentToken: d.EnrollmentTokenName, State: d.State, PolicyName: d.PolicyName,
 		Serial: d.HardwareInfo.SerialNumber, Model: d.HardwareInfo.Model,
 		AndroidVersion: d.SoftwareInfo.AndroidVersion, Compliant: d.PolicyCompliant,
+		PatchLevel: d.SoftwareInfo.SecurityPatchLevel,
+	}
+	if d.SecurityPosture != nil {
+		out.Posture = d.SecurityPosture.DevicePosture
 	}
 	if d.DeviceSettings != nil {
+		out.ADBEnabled, out.DevSettingsEnabled = d.DeviceSettings.ADBEnabled, d.DeviceSettings.DevelopmentSettingsEnabled
+		out.VerifyApps, out.UnknownSources = d.DeviceSettings.VerifyAppsEnabled, d.DeviceSettings.UnknownSourcesEnabled
 		secure, enc := d.DeviceSettings.IsDeviceSecure, d.DeviceSettings.IsEncrypted
 		out.Secure, out.Encrypted = &secure, &enc
 		switch d.DeviceSettings.VerifiedBootState {

@@ -137,11 +137,14 @@ func (f *FakeGoogle) Enrol(tokenValue, serial, model, androidVersion string, sec
 					DisplayName string `json:"displayName"`
 					VersionName string `json:"versionName"`
 				}{"com.example.mail", "Mail", "4.2"})
-				d.DeviceSettings = &struct {
-					IsDeviceSecure    bool   `json:"isDeviceSecure"`
-					IsEncrypted       bool   `json:"isEncrypted"`
-					VerifiedBootState string `json:"verifiedBootState"`
-				}{secure, encrypted, "VERIFIED"}
+				// A healthy phone by default: patched twelve days ago, nothing
+				// debug-related on, Play Protect on, and Google's posture SECURE.
+				// A test makes it drift with Tune.
+				d.DeviceSettings = &wireSettings{IsDeviceSecure: secure, IsEncrypted: encrypted, VerifiedBootState: "VERIFIED",
+					ADBEnabled: boolPtr(false), DevelopmentSettingsEnabled: boolPtr(false),
+					VerifyAppsEnabled: boolPtr(true), UnknownSourcesEnabled: boolPtr(false)}
+				d.SoftwareInfo.SecurityPatchLevel = time.Now().UTC().AddDate(0, 0, -12).Format("2006-01-02")
+				d.SecurityPosture = &wirePosture{DevicePosture: "SECURE"}
 				e.devices[dn] = d
 				// One-time: spent.
 				delete(e.tokens, name)
@@ -150,6 +153,51 @@ func (f *FakeGoogle) Enrol(tokenValue, serial, model, androidVersion string, sec
 		}
 	}
 	return ""
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// Facts is what a fake phone says about its settings and security, for a test
+// to change. A nil switch, an empty patch level or an empty posture means the
+// phone does not say.
+type Facts struct {
+	PatchLevel     string
+	ADB            *bool
+	DevSettings    *bool
+	UnknownSources *bool
+	VerifyApps     *bool
+	Posture        string
+}
+
+// Tune changes what a device says about itself, and when it says it.
+func (f *FakeGoogle) Tune(deviceName string, change func(*Facts)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.enterprises {
+		d, ok := e.devices[deviceName]
+		if !ok {
+			continue
+		}
+		if d.DeviceSettings == nil {
+			d.DeviceSettings = &wireSettings{}
+		}
+		x := Facts{PatchLevel: d.SoftwareInfo.SecurityPatchLevel, ADB: d.DeviceSettings.ADBEnabled,
+			DevSettings: d.DeviceSettings.DevelopmentSettingsEnabled, UnknownSources: d.DeviceSettings.UnknownSourcesEnabled,
+			VerifyApps: d.DeviceSettings.VerifyAppsEnabled}
+		if d.SecurityPosture != nil {
+			x.Posture = d.SecurityPosture.DevicePosture
+		}
+		change(&x)
+		d.SoftwareInfo.SecurityPatchLevel = x.PatchLevel
+		d.DeviceSettings.ADBEnabled, d.DeviceSettings.DevelopmentSettingsEnabled = x.ADB, x.DevSettings
+		d.DeviceSettings.UnknownSourcesEnabled, d.DeviceSettings.VerifyAppsEnabled = x.UnknownSources, x.VerifyApps
+		d.SecurityPosture = nil
+		if x.Posture != "" {
+			d.SecurityPosture = &wirePosture{DevicePosture: x.Posture}
+		}
+		d.LastStatusReport = time.Now().UTC().Format(time.RFC3339)
+		e.devices[deviceName] = d
+	}
 }
 
 // Report changes what a device says, for a test that wants it to drift.

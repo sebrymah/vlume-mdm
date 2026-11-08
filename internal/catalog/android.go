@@ -3,6 +3,7 @@ package catalog
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // The Android catalogue. Every Path is a field of Google's Android Management
@@ -28,6 +29,14 @@ func millis(v any) (any, bool) { return strconv.Itoa(v.(int) * 1000), true }
 func days(v any) (any, bool) { return fmt.Sprintf("%ds", v.(int)*86400), true }
 
 func nonEmpty(v any) (any, bool) { s, _ := v.(string); return s, s != "" }
+
+func emailAddress(s string) error {
+	at := strings.Index(s, "@")
+	if at < 1 || at != strings.LastIndex(s, "@") || !strings.Contains(s[at:], ".") || strings.ContainsAny(s, " \t,;<>") {
+		return fmt.Errorf("that is not an email address")
+	}
+	return nil
+}
 
 func packageName(s string) error {
 	if !packageRE.MatchString(s) {
@@ -125,6 +134,24 @@ func init() {
 		Setting{Key: "android.untrusted_apps_blocked", OS: "android", Section: dev, Label: "Block apps from outside the Play Store",
 			Help: "No installing apps from files or websites.",
 			Kind: Bool, Merge: Restrictive, Path: "advancedSecurityOverrides.untrustedAppsPolicy", Send: on("DISALLOW_INSTALL")},
+		Setting{Key: "android.play_protect_required", OS: "android", Section: dev, Label: "Require Google Play Protect",
+			Help: "Google's app scanning must stay on. People cannot switch it off.",
+			Kind: Bool, Merge: Restrictive, Path: "advancedSecurityOverrides.googlePlayProtectVerifyApps", Send: on("VERIFY_APPS_ENFORCED")},
+		Setting{Key: "android.auto_time_required", OS: "android", Section: dev, Label: "Force automatic date, time and time zone",
+			Help: "People cannot set the clock by hand, which matters for certificates and for the audit trail.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "autoDateAndTimeZone", Send: on("AUTO_DATE_AND_TIME_ZONE_ENFORCED")},
+		Setting{Key: "android.backup_blocked", OS: "android", Section: dev, Label: "Block cloud backup of the phone",
+			Help: "Stops the phone's data being backed up to a personal Google account.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "backupServiceEnabled", Send: func(v any) (any, bool) { b, _ := v.(bool); return false, b }},
+		Setting{Key: "android.frp_accounts", OS: "android", Section: dev, Label: "Accounts that can recover a reset phone",
+			Help: "Factory reset protection: after a reset outside the company's control, only these Google accounts can set the phone up again. One email address a line. Without it a reset phone can be locked to nobody.",
+			Kind: List, Merge: Union, Max: 10, Path: "frpAdminEmails", Send: plain, For: "company", Check: emailAddress},
+		Setting{Key: "android.accessibility_system_only", OS: "android", Section: dev, Label: "Allow only Android's own accessibility services",
+			Help: "Other accessibility apps can read and control everything on the screen, so they are a way to take over a phone. This blocks all of them. It also blocks third-party screen readers people may depend on, so check before turning it on.",
+			Kind: Bool, Merge: Restrictive, Path: "permittedAccessibilityServices.packageNames", Send: plain},
+		Setting{Key: "android.accessibility_allowed", OS: "android", Section: dev, Label: "Accessibility apps that are allowed",
+			Help: "Only these accessibility apps (plus Android's own) can run. One package name a line. Ignored if the box above is ticked.",
+			Kind: List, Merge: Intersect, Max: 50, Path: "permittedAccessibilityServices.packageNames", Send: plain, Check: packageName},
 		Setting{Key: "android.debugging_blocked", OS: "android", Section: dev, Label: "Block developer debugging",
 			Help: "Stops USB debugging, which can be used to pull data off a phone.",
 			Kind: Bool, Merge: Restrictive, For: "company", Path: "debuggingFeaturesAllowed", Send: func(v any) (any, bool) { b, _ := v.(bool); return false, b }},
@@ -191,6 +218,9 @@ func init() {
 			Kind: Bool, Merge: Restrictive, For: "personal", Path: "crossProfilePolicies.crossProfileDataSharing", Send: on("DATA_SHARING_FROM_WORK_TO_PERSONAL_DISALLOWED")},
 
 		// ------------------------------------------------- messages
+		Setting{Key: "android.lock_screen_message", OS: "android", Section: msg, Label: "Text on the lock screen",
+			Help: "Shown on the lock screen of a company phone, for example \"Property of Kalesi Foods. If found, call 0800 000 0000.\"",
+			Kind: Text, Merge: FirstByName, For: "company", Path: "deviceOwnerLockScreenInfo.defaultMessage", Send: nonEmpty},
 		Setting{Key: "android.short_message", OS: "android", Section: msg, Label: "Short message on the settings screen",
 			Help: "Shown where the phone says it is managed, such as \"Managed by Kalesi Foods. Call 0800 000 0000 for help.\"",
 			Kind: Text, Merge: FirstByName, Path: "shortSupportMessage.defaultMessage", Send: nonEmpty},

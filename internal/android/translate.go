@@ -104,6 +104,20 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 			if r.Bool {
 				fromRules["android.encryption_required"] = true
 			}
+		// These three are judged from what Google reports AND delivered, so a
+		// phone is both held to the rule and told to stay that way.
+		case policy.DebuggingBlocked:
+			if r.Bool {
+				fromRules["android.debugging_blocked"] = true
+			}
+		case policy.UnknownSourcesBlocked:
+			if r.Bool {
+				fromRules["android.untrusted_apps_blocked"] = true
+			}
+		case policy.PlayProtectRequired:
+			if r.Bool {
+				fromRules["android.play_protect_required"] = true
+			}
 		case policy.ScreenLockTimeoutMax:
 			fromRules["android.screen_lock_seconds"] = r.Num
 		default:
@@ -143,7 +157,10 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 
 	// Everything else goes where the catalogue says.
 	typed := map[string]bool{"android.password_quality": true, "android.password_min_length": true,
-		"android.screen_lock_seconds": true, "android.encryption_required": true}
+		"android.screen_lock_seconds": true, "android.encryption_required": true,
+		// Both settings write the same field, so they are settled below, in one
+		// place, rather than by whichever the map hands over first.
+		"android.accessibility_system_only": true, "android.accessibility_allowed": true}
 	for key, v := range merged {
 		if typed[key] {
 			continue
@@ -161,6 +178,13 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 			continue
 		}
 		out.set(s.Path, sent)
+	}
+	// Only Android's own accessibility services, or only the ones listed. The
+	// stricter wins, and which one is decided here and not by map order.
+	if v, _ := merged["android.accessibility_system_only"].(bool); v {
+		out.set("permittedAccessibilityServices.packageNames", []string{})
+	} else if list, ok := merged["android.accessibility_allowed"].([]string); ok {
+		out.set("permittedAccessibilityServices.packageNames", list)
 	}
 	sort.Strings(undelivered)
 	return out, undelivered
@@ -248,6 +272,23 @@ func ReportFrom(d Device, delivered Policy) policy.Report {
 	rep := policy.Report{OSVersion: d.AndroidVersion, Apps: d.Apps}
 	rep.PasscodeSet = d.Secure
 	rep.DiskEncryption = d.Encrypted
+	// What Google says about the phone's settings and security. Each stays
+	// unsaid when Google did not say it.
+	rep.PatchLevel = d.PatchLevel
+	rep.UnknownSourcesEnabled = d.UnknownSources
+	rep.PlayProtectEnabled = d.VerifyApps
+	if d.ADBEnabled != nil || d.DevSettingsEnabled != nil {
+		on := (d.ADBEnabled != nil && *d.ADBEnabled) || (d.DevSettingsEnabled != nil && *d.DevSettingsEnabled)
+		rep.DebuggingEnabled = &on
+	}
+	switch d.Posture {
+	case "SECURE":
+		ok := true
+		rep.IntegrityOK = &ok
+	case "AT_RISK", "POTENTIAL_RISK":
+		ok := false
+		rep.IntegrityOK = &ok
+	}
 	if d.VerifiedBoot != nil {
 		rooted := !*d.VerifiedBoot
 		rep.Jailbroken = &rooted

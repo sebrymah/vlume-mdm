@@ -34,6 +34,10 @@ const (
 	Choice
 	Text
 	Apps
+	// List is a list of short strings (email addresses, package names), one
+	// per line in the editor. Max is the most it may hold and Check judges
+	// each item.
+	List
 )
 
 // Direction says which way "stricter" runs, so that two policies that
@@ -55,6 +59,12 @@ const (
 	// Combine: apps. The lists are joined; for one app the strictest
 	// instruction wins (blocked, then required, then available).
 	Combine
+	// Union: a list where more is stricter or neutral (the accounts that may
+	// recover a locked phone: every policy's are kept).
+	Union
+	// Intersect: an allow-list, where less is stricter. A service is allowed
+	// only if every policy that has a list allows it.
+	Intersect
 )
 
 // Option is one choice of a Choice setting.
@@ -228,6 +238,31 @@ func Parse(raw map[string]json.RawMessage) (Values, error) {
 				}
 			}
 			out[key] = v
+		case List:
+			var items []string
+			if err := json.Unmarshal(rv, &items); err != nil {
+				return nil, fmt.Errorf("%w: %s takes a list", ErrBadValue, key)
+			}
+			if len(items) > s.Max {
+				return nil, fmt.Errorf("%w: %s holds at most %d entries", ErrBadValue, key, s.Max)
+			}
+			clean := make([]string, 0, len(items))
+			seen := map[string]bool{}
+			for _, it := range items {
+				it = strings.TrimSpace(it)
+				if it == "" || seen[it] {
+					continue
+				}
+				if s.Check != nil {
+					if err := s.Check(it); err != nil {
+						return nil, fmt.Errorf("%w: %s: %q: %v", ErrBadValue, key, it, err)
+					}
+				}
+				seen[it] = true
+				clean = append(clean, it)
+			}
+			sort.Strings(clean)
+			out[key] = clean
 		case Apps:
 			var list []AppRule
 			if err := json.Unmarshal(rv, &list); err != nil {
@@ -315,8 +350,32 @@ func stricter(s Setting, a, b any) any {
 		return a
 	case Combine:
 		return combineApps(a.([]AppRule), b.([]AppRule))
+	case Union:
+		return mergeLists(a.([]string), b.([]string), true)
+	case Intersect:
+		return mergeLists(a.([]string), b.([]string), false)
 	}
 	return a // FirstByName: the one already held came from the earlier policy
+}
+
+// mergeLists joins two lists (union) or keeps what is in both (intersection),
+// sorted, so the result never depends on which came first.
+func mergeLists(a, b []string, union bool) []string {
+	in := map[string]int{}
+	for _, x := range a {
+		in[x] |= 1
+	}
+	for _, x := range b {
+		in[x] |= 2
+	}
+	out := make([]string, 0, len(in))
+	for x, bits := range in {
+		if union || bits == 3 {
+			out = append(out, x)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func optionIndex(s Setting, v string) int {
@@ -365,6 +424,8 @@ func Describe(s Setting, v any) string {
 		return strconv.Quote(v.(string))
 	case Apps:
 		return fmt.Sprintf("%d app(s)", len(v.([]AppRule)))
+	case List:
+		return strings.Join(v.([]string), ", ")
 	}
 	return fmt.Sprint(v)
 }

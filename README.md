@@ -221,6 +221,12 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-passcodeorder # let the lock a phone is asked for depend on the order rules are read in, expect a FAILURE
 ./run_go.sh --break-enrolscheme    # show the enrolment link as http://, expect a FAILURE
 ./run_go.sh --break-enrolandroid   # make an agent token for an Android phone on the Enrolments page, expect a FAILURE
+./run_go.sh --break-patchage       # let a phone with an old security patch pass, expect a FAILURE
+./run_go.sh --break-debugread      # do not count developer options as debugging, expect a FAILURE
+./run_go.sh --break-offsense       # judge a rule about something being off the wrong way round, expect a FAILURE
+./run_go.sh --break-integrity      # do not read an at-risk phone as failing its integrity check, expect a FAILURE
+./run_go.sh --break-accessibility  # let the accessibility allow-list beat system-only, expect a FAILURE
+./run_go.sh --break-listmerge      # join two allow-lists instead of intersecting them, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -623,11 +629,12 @@ would be saved, shown and never reach anything (`--break-configowner`).
 
 ### One click, then yours
 
-The **ready-made policies** (6 for Android, 4 for Windows) are ordinary policies
+The **ready-made policies** (9 for Android, 4 for Windows) are ordinary policies
 added in one click, each held to the same checks by a test, and from then on
 changed like any other. Adding one twice is refused (`--break-libraryonce`).
 Android: secure baseline; company phone, locked down; personal phone with a work
-profile; field agent phone; no camera, no screenshots; keep everything up to date.
+profile; field agent phone; no camera, no screenshots; keep everything up to date;
+and the corporate baseline's three tiers (below).
 Windows: secure baseline; locked-down laptop; steady updates; privacy. The page
 is filtered by system (All, Android, Windows, iOS, macOS), and a policy is
 written in a guided form made from the catalogue, with its current values filled
@@ -658,6 +665,59 @@ scoped to personal devices was never delivered to anything.
 
 Each device's page lists what it is told to do and which policies asked for each
 setting.
+
+### The corporate baseline's Critical controls
+
+A corporate baseline document (Android first, with the same for Windows, macOS and
+iOS) was reviewed control by control against the platform: of 60 Android controls,
+24 existed, 24 partly existed and 12 did not. The biggest gap was that the platform
+could *prevent* things on a phone but could not *detect* when one drifted, which the
+document rates Critical. This closes the Critical ones.
+
+**Read from what Google reports, and judged.** Five new compliance rules, judged
+exactly like the first seven (a phone that does not say is unknown, never a pass):
+
+| Rule | Judged from |
+|---|---|
+| `security_patch_max_age_days` | the date of the phone's security patch, in whole days (exactly as old as the limit passes) |
+| `debugging_blocked` | USB debugging or developer options on |
+| `unknown_sources_blocked` | installing from unknown sources allowed |
+| `play_protect_required` | Google Play Protect's app scanning off |
+| `integrity_required` | Google's own security posture: `AT_RISK` or `POTENTIAL_RISK` fails |
+
+Three of them (debugging, unknown sources, Play Protect) are also *delivered*, so a
+phone is both held to the rule and told to stay that way (`--break-offsense`,
+`--break-debugread`). The patch window and integrity are judged only, and named as
+such when a policy is saved (`--break-patchage`, `--break-integrity`). A test drifts a
+fake company phone through each failure and checks it is caught, named in words,
+compliant again once put right, and never compliant when it says nothing.
+
+**New settings:** Google Play Protect required, automatic date and time, cloud backup
+blocked, lock-screen owner text, accounts that can recover a reset phone (factory
+reset protection), and an accessibility allow-list or Android's-own-only switch. The
+two accessibility settings write one Google field, so which wins is decided in one
+place and not by map order (`--break-accessibility`). Lists are a new setting type:
+recovery accounts are joined across policies; an allow-list keeps only what every
+policy allows (`--break-listmerge`).
+
+**Tier 1, 2 and 3** ready-made policies from the document's section 9, built on each
+other: Tier 1 is the minimum (eight-character PIN, a five-minute lock, no sideloading,
+no debugging, Play Protect, automatic time, a patch within 30 days, automatic
+updates); Tier 2 adds USB, memory-card, backup, account, hotspot and screenshot
+blocks, locked Wi-Fi and VPN settings, a 14-day patch window and the integrity check;
+Tier 3 adds a longer alphanumeric password, a two-minute lock, approved apps only,
+Android's own accessibility only, a 7-day patch window and quarantine on failure. The
+integrity check starts at Tier 2 because Google's posture field is the one signal
+here not yet seen from a real phone: if it never arrives, every Tier 2 phone would
+show as unknown. The existing ready-made policies were brought to the document's
+values (eight characters, five minutes).
+
+**Still open from that review:** an alert when a device *becomes* non-compliant and
+when it goes stale; severity levels, grace periods and remediation deadlines; the
+approved-app catalogue and per-app permissions; managed app configuration; Wi-Fi, VPN
+and certificate profiles; corporate-owned work profile as its own model; zero-touch;
+an exceptions register with expiry; conditional access with an identity provider; and
+tiers assigned by group, which waits for device groups.
 
 ### What is not true yet
 

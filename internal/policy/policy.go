@@ -56,6 +56,15 @@ const (
 	OSVersionMin           Kind = "os_version_min"
 	FirewallRequired       Kind = "firewall_required"
 	JailbreakBlocked       Kind = "jailbreak_blocked"
+
+	// What a phone can say about itself that a laptop's agent cannot, read from
+	// what Google reports (internal/android). Each is judged exactly as the
+	// seven above are: a device that does not say is unknown, never a pass.
+	SecurityPatchMaxAge   Kind = "security_patch_max_age_days"
+	DebuggingBlocked      Kind = "debugging_blocked"
+	UnknownSourcesBlocked Kind = "unknown_sources_blocked"
+	PlayProtectRequired   Kind = "play_protect_required"
+	IntegrityRequired     Kind = "integrity_required"
 )
 
 type valueKind int
@@ -113,6 +122,21 @@ var catalogue = map[Kind]spec{
 	}},
 	JailbreakBlocked: {boolean, requiringItIsStricter, func(Requirement) string {
 		return "the device must not be jailbroken or rooted"
+	}},
+	SecurityPatchMaxAge: {count, lowerIsStricter, func(r Requirement) string {
+		return fmt.Sprintf("the security patch must be no more than %d days old", r.Num)
+	}},
+	DebuggingBlocked: {boolean, requiringItIsStricter, func(Requirement) string {
+		return "USB debugging and developer options must be off"
+	}},
+	UnknownSourcesBlocked: {boolean, requiringItIsStricter, func(Requirement) string {
+		return "installing apps from unknown sources must be off"
+	}},
+	PlayProtectRequired: {boolean, requiringItIsStricter, func(Requirement) string {
+		return "Google Play Protect must be on"
+	}},
+	IntegrityRequired: {boolean, requiringItIsStricter, func(Requirement) string {
+		return "the device must pass its integrity check"
 	}},
 }
 
@@ -437,6 +461,15 @@ type Report struct {
 	OSVersion         string   `json:"os_version,omitempty"`
 	Firewall          *bool    `json:"firewall,omitempty"`
 	Jailbroken        *bool    `json:"jailbroken,omitempty"`
+
+	// What an Android phone reports through Google. PatchLevel is the date of
+	// its security patch, "2026-10-05". The others are pointers for the same
+	// reason as the rest: not said is not false.
+	PatchLevel            string `json:"security_patch_level,omitempty"`
+	DebuggingEnabled      *bool  `json:"debugging_enabled,omitempty"`
+	UnknownSourcesEnabled *bool  `json:"unknown_sources_enabled,omitempty"`
+	PlayProtectEnabled    *bool  `json:"play_protect_enabled,omitempty"`
+	IntegrityOK           *bool  `json:"integrity_ok,omitempty"`
 }
 
 type Finding struct {
@@ -580,6 +613,41 @@ func Evaluate(rules Rules, rep Report, reportedAt, now time.Time) Verdict {
 			case compareVersions(rep.OSVersion, req.Text) < 0:
 				note(found(req, "it is on "+rep.OSVersion, false))
 			}
+		case SecurityPatchMaxAge:
+			patched, ok := parsePatchLevel(rep.PatchLevel)
+			switch {
+			case rep.PatchLevel == "":
+				note(found(req, "the device did not say", true))
+			case !ok:
+				// A date we cannot read is not a pass.
+				note(found(req, fmt.Sprintf("its patch level, %q, is not a date this platform can read", rep.PatchLevel), true))
+			default:
+				// Whole days, so a patch exactly as old as the limit passes and
+				// one a day older does not.
+				if age := int(now.Sub(patched).Hours() / 24); age > req.Num {
+					note(found(req, fmt.Sprintf("its security patch is %d days old (%s)", age, rep.PatchLevel), false))
+				}
+			}
+		case DebuggingBlocked:
+			if !req.Bool {
+				continue
+			}
+			checkOff(note, req, rep.DebuggingEnabled, "USB debugging or developer options are on")
+		case UnknownSourcesBlocked:
+			if !req.Bool {
+				continue
+			}
+			checkOff(note, req, rep.UnknownSourcesEnabled, "installing from unknown sources is allowed")
+		case PlayProtectRequired:
+			if !req.Bool {
+				continue
+			}
+			checkBool(note, req, rep.PlayProtectEnabled, "Google Play Protect is off")
+		case IntegrityRequired:
+			if !req.Bool {
+				continue
+			}
+			checkBool(note, req, rep.IntegrityOK, "the device failed its integrity check")
 		}
 	}
 
@@ -591,6 +659,28 @@ func Evaluate(rules Rules, rep Report, reportedAt, now time.Time) Verdict {
 	default:
 		return Verdict{State: Compliant, Findings: []Finding{}}
 	}
+}
+
+// checkOff is checkBool turned round: the rule is met when the device says a
+// thing is OFF, and unmet when it says it is on.
+func checkOff(note func(Finding), req Requirement, got *bool, failure string) {
+	switch {
+	case got == nil:
+		note(found(req, "the device did not say", true))
+	case *got:
+		note(found(req, failure, false))
+	}
+}
+
+// parsePatchLevel reads the date Android gives for a security patch, which is
+// "2026-10-05" and sometimes only "2026-10".
+func parsePatchLevel(s string) (time.Time, bool) {
+	for _, layout := range []string{"2006-01-02", "2006-01"} {
+		if t, err := time.Parse(layout, strings.TrimSpace(s)); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func checkBool(note func(Finding), req Requirement, got *bool, failure string) {

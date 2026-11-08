@@ -54,6 +54,8 @@ func TestEveryAndroidSettingIsSentWhereTheCatalogueSaysItIs(t *testing.T) {
 			v = "com.example.vpn"
 		case catalog.Apps:
 			v = []catalog.AppRule{{Package: "com.example.crm", Install: "required"}}
+		case catalog.List:
+			v = []string{"com.example.svc"}
 		}
 		m := sent(t, nil, catalog.Values{s.Key: v})
 		if _, ok := at(m, s.Path); !ok {
@@ -182,5 +184,92 @@ func TestTheLockQualityDoesNotDependOnTheOrderOfTheRules(t *testing.T) {
 	// And a setting that asks for more than a rule is not weakened by it.
 	if got, _ := at(sent(t, rules, catalog.Values{"android.password_quality": "COMPLEX"}), "passwordRequirements.passwordQuality"); got != "COMPLEX" {
 		t.Fatalf("a stricter setting was weakened to %v", got)
+	}
+}
+
+func yes() *bool { v := true; return &v }
+func no() *bool  { v := false; return &v }
+
+// What Google says about a phone becomes what the engine judges from, and
+// anything Google did not say stays unsaid.
+func TestWhatGoogleReportsBecomesTheEnginesReport(t *testing.T) {
+	d := Device{PatchLevel: "2026-10-05", ADBEnabled: no(), DevSettingsEnabled: yes(),
+		VerifyApps: yes(), UnknownSources: no(), Posture: "SECURE"}
+	rep := ReportFrom(d, Policy{})
+	if rep.PatchLevel != "2026-10-05" || rep.PlayProtectEnabled == nil || !*rep.PlayProtectEnabled ||
+		rep.UnknownSourcesEnabled == nil || *rep.UnknownSourcesEnabled || rep.IntegrityOK == nil || !*rep.IntegrityOK {
+		t.Fatalf("%+v", rep)
+	}
+	// Developer options on is debugging on, whatever the USB switch says.
+	if rep.DebuggingEnabled == nil || !*rep.DebuggingEnabled {
+		t.Fatal("developer options were on and debugging was read as off")
+	}
+	// Both off is off.
+	rep = ReportFrom(Device{ADBEnabled: no(), DevSettingsEnabled: no()}, Policy{})
+	if rep.DebuggingEnabled == nil || *rep.DebuggingEnabled {
+		t.Fatal("both off was read as on")
+	}
+	// An at-risk posture is a failed integrity check; no posture is no answer.
+	for posture, want := range map[string]*bool{"AT_RISK": no(), "POTENTIAL_RISK": no(), "": nil, "POSTURE_UNSPECIFIED": nil} {
+		got := ReportFrom(Device{Posture: posture}, Policy{}).IntegrityOK
+		if (got == nil) != (want == nil) || (got != nil && *got != *want) {
+			t.Errorf("posture %q read as %v", posture, got)
+		}
+	}
+	// Nothing said stays unsaid: not false, not off, not fine.
+	empty := ReportFrom(Device{}, Policy{})
+	if empty.DebuggingEnabled != nil || empty.UnknownSourcesEnabled != nil || empty.PlayProtectEnabled != nil ||
+		empty.IntegrityOK != nil || empty.PatchLevel != "" {
+		t.Fatalf("a phone that said nothing was read as having said something: %+v", empty)
+	}
+}
+
+// Three of the new rules are delivered as well as judged, so a phone is told to
+// stay the way it is held to. The other two are judged only, and say so.
+func TestTheNewRulesAreDeliveredOrNamedAsJudgedOnly(t *testing.T) {
+	rules := policy.Rules{
+		policy.DebuggingBlocked:      {Kind: policy.DebuggingBlocked, Bool: true},
+		policy.UnknownSourcesBlocked: {Kind: policy.UnknownSourcesBlocked, Bool: true},
+		policy.PlayProtectRequired:   {Kind: policy.PlayProtectRequired, Bool: true},
+		policy.SecurityPatchMaxAge:   {Kind: policy.SecurityPatchMaxAge, Num: 30},
+		policy.IntegrityRequired:     {Kind: policy.IntegrityRequired, Bool: true},
+	}
+	p, judged := TranslateWith(rules, nil)
+	b, _ := json.Marshal(p)
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	if got, _ := at(m, "debuggingFeaturesAllowed"); got != false {
+		t.Errorf("debugging was not switched off: %v", got)
+	}
+	if got, _ := at(m, "advancedSecurityOverrides.untrustedAppsPolicy"); got != "DISALLOW_INSTALL" {
+		t.Errorf("unknown sources were not blocked: %v", got)
+	}
+	if got, _ := at(m, "advancedSecurityOverrides.googlePlayProtectVerifyApps"); got != "VERIFY_APPS_ENFORCED" {
+		t.Errorf("Play Protect was not enforced: %v", got)
+	}
+	if strings.Join(judged, ",") != "integrity_required,security_patch_max_age_days" {
+		t.Errorf("the judged-only rules are %v", judged)
+	}
+}
+
+// Both accessibility settings write one Google field. Which one wins is
+// decided in one place, so it is the same every time; Go reads a map in a new
+// random order on each run, so two hundred runs.
+func TestAccessibilityServicesAreSettledTheSameWayEveryTime(t *testing.T) {
+	both := catalog.Values{"android.accessibility_system_only": true, "android.accessibility_allowed": []string{"com.example.reader"}}
+	listOnly := catalog.Values{"android.accessibility_allowed": []string{"com.example.reader"}}
+	for i := 0; i < 200; i++ {
+		got, ok := at(sent(t, nil, both), "permittedAccessibilityServices.packageNames")
+		if !ok || len(got.([]any)) != 0 {
+			t.Fatalf("run %d: system-only did not win over the list: %v", i, got)
+		}
+	}
+	got, _ := at(sent(t, nil, listOnly), "permittedAccessibilityServices.packageNames")
+	if l := got.([]any); len(l) != 1 || l[0] != "com.example.reader" {
+		t.Fatalf("the list alone: %v", got)
+	}
+	// And with neither, nothing is sent, so nothing is restricted.
+	if _, ok := at(sent(t, nil, catalog.Values{}), "permittedAccessibilityServices"); ok {
+		t.Fatal("accessibility was restricted although no policy asked")
 	}
 }

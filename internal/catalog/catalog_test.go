@@ -53,6 +53,10 @@ func TestEverySettingIsWellFormed(t *testing.T) {
 				if s.Merge != Combine {
 					t.Errorf("%s: apps combine", s.Key)
 				}
+			case List:
+				if (s.Merge != Union && s.Merge != Intersect) || s.Max < 1 || s.Check == nil {
+					t.Errorf("%s: a list needs a way to combine, a size limit and a check on each entry", s.Key)
+				}
 			default:
 				t.Errorf("%s: no type", s.Key)
 			}
@@ -165,5 +169,42 @@ func TestDescribeSaysItInWords(t *testing.T) {
 	s, _ = Lookup("android.password_quality")
 	if got := Describe(s, "NUMERIC"); got != "A numeric PIN" {
 		t.Fatal(got)
+	}
+}
+
+func TestListsAreCheckedTidiedAndMergedTheRightWay(t *testing.T) {
+	for _, bad := range []string{
+		`{"android.frp_accounts": ["not an email"]}`,
+		`{"android.frp_accounts": ["a@b.example", "x"]}`,
+		`{"android.frp_accounts": "a@b.example"}`,
+		`{"android.accessibility_allowed": ["not a package"]}`,
+		`{"android.frp_accounts": ["a1@b.example","a2@b.example","a3@b.example","a4@b.example","a5@b.example","a6@b.example","a7@b.example","a8@b.example","a9@b.example","a10@b.example","a11@b.example"]}`,
+	} {
+		if _, err := Parse(raw(t, bad)); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
+	}
+	// Entries are trimmed, de-duplicated, dropped when empty and put in order.
+	v, err := Parse(raw(t, `{"android.frp_accounts": [" b@x.example", "a@x.example", "a@x.example", ""]}`))
+	if err != nil || !reflect.DeepEqual(v["android.frp_accounts"], []string{"a@x.example", "b@x.example"}) {
+		t.Fatalf("%v %v", v, err)
+	}
+	// Recovery accounts are joined: every policy's are kept.
+	u := Merge(Values{"android.frp_accounts": []string{"a@x.example"}}, Values{"android.frp_accounts": []string{"b@x.example"}})
+	if !reflect.DeepEqual(u["android.frp_accounts"], []string{"a@x.example", "b@x.example"}) {
+		t.Fatalf("union: %v", u)
+	}
+	// An allow-list keeps only what every policy allows, in either order.
+	x := Values{"android.accessibility_allowed": []string{"com.a.one", "com.b.two"}}
+	y := Values{"android.accessibility_allowed": []string{"com.b.two", "com.c.three"}}
+	for _, m := range []Values{Merge(x, y), Merge(y, x)} {
+		if !reflect.DeepEqual(m["android.accessibility_allowed"], []string{"com.b.two"}) {
+			t.Fatalf("intersection: %v", m)
+		}
+	}
+	// A policy with no list at all leaves the other's alone, because no list
+	// means no restriction.
+	if m := Merge(x, Values{"android.camera_disabled": true}); !reflect.DeepEqual(m["android.accessibility_allowed"], []string{"com.a.one", "com.b.two"}) {
+		t.Fatalf("a policy without a list changed another's: %v", m)
 	}
 }

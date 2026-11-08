@@ -92,6 +92,12 @@ var formRules = []struct {
 	{policy.OSVersionMin, "The system is at least version", "text", "", nil},
 	{policy.FirewallRequired, "The firewall must be on", "bool", "", map[string]bool{"android": true}},
 	{policy.JailbreakBlocked, "The device must not be rooted or jailbroken", "bool", "", map[string]bool{"windows": true}},
+	// Read from what Google reports about an Android phone.
+	{policy.SecurityPatchMaxAge, "The security patch is no more than", "int", "days old", map[string]bool{"windows": true}},
+	{policy.DebuggingBlocked, "USB debugging and developer options are off", "bool", "", map[string]bool{"windows": true}},
+	{policy.UnknownSourcesBlocked, "Installing from unknown sources is off", "bool", "", map[string]bool{"windows": true}},
+	{policy.PlayProtectRequired, "Google Play Protect is on", "bool", "", map[string]bool{"windows": true}},
+	{policy.IntegrityRequired, "The device passes Google's integrity check", "bool", "", map[string]bool{"windows": true}},
 }
 
 // BuildPolicyForm makes the editor for one system, filled from a policy or a
@@ -156,6 +162,11 @@ func field(s catalog.Setting, v any) FormField {
 	case catalog.Text:
 		f.Kind = "text"
 		f.Value, _ = v.(string)
+	case catalog.List:
+		f.Kind = "list"
+		if items, ok := v.([]string); ok {
+			f.Value = strings.Join(items, "\n")
+		}
 	case catalog.Apps:
 		f.Kind = "apps"
 		if list, ok := v.([]catalog.AppRule); ok {

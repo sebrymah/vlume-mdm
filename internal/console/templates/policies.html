@@ -63,6 +63,9 @@
           {{else if eq .Kind "text"}}
           <input name="{{.Input}}" value="{{.Value}}" maxlength="300" placeholder="not set"
             style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{else if eq .Kind "list"}}
+          <textarea name="{{.Input}}" rows="3" spellcheck="false" placeholder="one per line"
+            style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px">{{.Value}}</textarea>
           {{else if eq .Kind "apps"}}
           <textarea name="{{.Input}}" rows="5" spellcheck="false" placeholder="com.example.crm required&#10;com.example.news available&#10;com.example.game blocked"
             style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px">{{.Value}}</textarea>

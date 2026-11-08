@@ -92,9 +92,17 @@ type Device struct {
 	Compliant     bool
 	NonCompliance []string
 	// Apps is what Google reports installed, when the policy asks it to.
-	Apps         []policy.App
-	LastReportAt *time.Time
-	State        string // ACTIVE, DISABLED, DELETED, PROVISIONING
+	Apps []policy.App
+	// What Google says about the phone's settings and security. Nil, or
+	// empty, means Google did not say.
+	PatchLevel         string // the date of its security patch, "2026-10-05"
+	ADBEnabled         *bool
+	DevSettingsEnabled *bool
+	VerifyApps         *bool // Google Play Protect's app scanning
+	UnknownSources     *bool
+	Posture            string // SECURE, AT_RISK or POTENTIAL_RISK
+	LastReportAt       *time.Time
+	State              string // ACTIVE, DISABLED, DELETED, PROVISIONING
 }
 
 type Command string

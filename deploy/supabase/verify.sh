@@ -27,6 +27,8 @@ check "mdm_app cannot bypass row-level security" "$(q "select rolbypassrls from 
 check "mdm_operator cannot bypass row-level security" "$(q "select rolbypassrls from pg_roles where rolname='mdm_operator'")" "f"
 check "tenant data has row-level security forced on" "$(q "select count(*) > 10 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and c.relforcerowsecurity")" "t"
 check "Supabase's API roles hold no rights on the platform's tables" "$(q "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace, lateral aclexplode(c.relacl) a join pg_roles g on g.oid=a.grantee where n.nspname in ('public','app') and g.rolname in ('anon','authenticated','service_role')")" "0"
-check "no customer data yet (a fresh database)" "$(q "select count(*) from tenants")" "0"
+# Informational, not a pass or a fail: a database that has had a sign-up is not
+# a broken one. It is a useful line on the first run, when it should say 0.
+printf '  INFO  organisations in the database: %s\n' "$(q "select count(*) from tenants")"
 echo
 if [ "$bad" = 0 ]; then echo "ALL CHECKS PASSED. The database is set up."; else echo "SOMETHING IS NOT RIGHT. Paste this output to me."; exit 1; fi

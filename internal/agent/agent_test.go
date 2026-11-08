@@ -127,6 +127,7 @@ func newRig(t *testing.T) *rig {
 		`DELETE FROM signups`,
 		`DELETE FROM integration_tokens`,
 		`DELETE FROM android_enrollment_tokens`,
+		`DELETE FROM join_links`,
 		`DELETE FROM android_enterprises`,
 		`DELETE FROM sending_domains`,
 		`DELETE FROM notifications`,

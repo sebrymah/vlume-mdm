@@ -68,6 +68,7 @@ func seed(t *testing.T, ctx context.Context) {
 		`DELETE FROM signups`,
 		`DELETE FROM integration_tokens`,
 		`DELETE FROM android_enrollment_tokens`,
+		`DELETE FROM join_links`,
 		`DELETE FROM android_enterprises`,
 		`DELETE FROM sending_domains`,
 		`DELETE FROM device_apps`,

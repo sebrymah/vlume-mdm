@@ -188,8 +188,109 @@
   {{end}}
   {{end}}
 
+  {{if .NewJoinLink}}
+  <div class="card" style="border-color:var(--brand);margin-bottom:16px">
+    <p style="margin:0 0 6px"><strong>Join link ready: {{.NewJoinName}}.</strong> Shown once. For {{.NewJoinUses}} device{{if ne .NewJoinUses 1}}s{{end}}, until {{.NewJoinExpiry.Format "2 Jan 15:04"}}.</p>
+    <p class="k" style="margin:10px 0 4px">The link</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="join-link" readonly value="{{.NewJoinLink}}" onclick="this.select()"
+             style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--page)">
+      <button type="button" data-copy2="join-link" style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
+    </div>
+    <p class="k" style="margin:12px 0 4px">The code</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="join-code" readonly value="{{.NewJoinCode}}" onclick="this.select()"
+             style="width:170px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;letter-spacing:.2em;text-align:center;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--page)">
+      <button type="button" data-copy2="join-code" style="font:inherit;font-size:12px;padding:8px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Copy</button>
+    </div>
+    <p class="sub" style="font-size:12.5px;margin:10px 0 0"><strong>Send the link and the code by different routes</strong>, for example the link by email and the code by phone call or chat. Anyone with the link can open it without signing in, but cannot go further without the code. The code stops working at the same moment as the link: after {{.NewJoinUses}} device{{if ne .NewJoinUses 1}}s{{end}}, or at the time above, or when you cancel it. This is the only time the code is shown.</p>
+  </div>
+  {{end}}
+
+  {{if and $.CanEnrol .Bound}}
+  <form method="post" action="/android/join" class="card" style="margin-bottom:16px">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <p class="k">Make a join link</p>
+    <p class="sub" style="margin:0 0 10px">A link anybody can open, with no account. It asks for a six-digit code you send separately. Set how many devices it will set up and how long it lasts; both the link and the code stop at whichever comes first. One device is a link for one person. A team is the same link for hundreds.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="flex:2 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Name</span>
+        <input name="name" required maxlength="80" placeholder="Kano field team"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:0 1 110px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Devices</span>
+        <input name="uses" type="number" min="1" max="5000" value="1" required
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <label style="flex:1 1 130px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Valid for</span>
+        <select name="hours" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          {{range .JoinLifetimes}}<option value="{{.Hours}}" {{if eq .Hours 168}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select>
+      </label>
+      <label style="flex:2 1 220px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Phones are</span>
+        <select name="ownership" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+          <option value="personal">Personal (a phone in use gets a work profile)</option>
+          <option value="company">Company (new or reset phones, fully managed)</option>
+        </select>
+      </label>
+      <label style="flex:2 1 200px">
+        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">For whom (one device only, optional)</span>
+        <input name="assigned_to" placeholder="kemi@company.example"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
+      </label>
+      <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Make the link</button>
+    </div>
+  </form>
+  <script>
+    document.querySelectorAll('[data-copy2]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = document.getElementById(b.getAttribute('data-copy2'));
+        el.select();
+        var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); });
+        } else { document.execCommand('copy'); done(); }
+      });
+    });
+  </script>
+
+  {{if .Joins}}
+  <h2>Join links</h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Name</th><th>Devices</th><th>Valid until</th><th>State</th><th>For</th><th>Made</th><th></th></tr></thead>
+    <tbody>
+    {{range .Joins}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.Uses}} of {{.MaxUses}}</td>
+        <td>{{.ExpiresAt.Format "2 Jan 15:04"}}</td>
+        <td style="text-transform:capitalize">{{.State $.Android.Now}}</td>
+        <td>{{if .AssignedTo}}{{.AssignedTo}}{{else}}<span style="color:var(--muted)">anyone with the code</span>{{end}}</td>
+        <td>{{.CreatedAt.Format "2 Jan 15:04"}} by {{.CreatedBy}}</td>
+        <td style="text-align:right">
+          {{if or (eq (.State $.Android.Now) "active") (eq (.State $.Android.Now) "paused")}}
+          <form method="post" action="/android/join/{{.ID}}/cancel" style="margin:0">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" style="font:inherit;font-size:12px;padding:5px 10px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--bad)">Cancel</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+  {{end}}
+
   {{if $.CanEnrol}}
-  <form method="post" action="/android/tokens" class="card">
+  <details style="margin:16px 0">
+  <summary class="sub" style="cursor:pointer;font-size:13px">Advanced: a direct Google token, with no code and no limit (one device)</summary>
+  <form method="post" action="/android/tokens" class="card" style="margin-top:10px">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="return" value="/android">
     <p class="k">Invite an Android device</p>
@@ -218,6 +319,7 @@
       Email the link to this person{{if not .CanMail}} (no mail server here; you will pass the link on yourself){{end}}
     </label>
   </form>
+  </details>
   {{end}}
 
   {{if .Tokens}}

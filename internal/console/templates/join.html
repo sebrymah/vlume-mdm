@@ -1,0 +1,54 @@
+{{template "head" .}}
+<header class="bar">
+  {{if .Brand.HasLogo}}<img src="/brand/logo" alt="" style="height:24px;max-width:120px;object-fit:contain;border-radius:4px;background:#fff;padding:2px">{{else}}<span class="mark" aria-hidden="true">{{.Brand.MarkLetter}}</span>{{end}}
+  <span style="font-size:14px;font-weight:600">{{.Brand.ProductName}}</span>
+</header>
+<main style="max-width:480px;margin:0 auto;padding-top:44px">
+  {{with .Join}}
+  <h1 style="margin-bottom:6px">{{.Title}}</h1>
+  {{if .Said}}<p role="alert" style="margin:10px 0;padding:10px 12px;border-radius:6px;background:#FDE7E5;color:var(--bad);font-size:13.5px;line-height:1.5">{{.Said}}</p>{{end}}
+
+  {{if eq .Mode "code"}}
+  <p class="sub">Type the six-digit code you were given. It came separately from this link.</p>
+  <form method="post" class="card" autocomplete="off">
+    <label style="display:block;margin-bottom:14px">
+      <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Six-digit code</span>
+      <input name="code" required autofocus inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code"
+             style="width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:24px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.25em;text-align:center">
+    </label>
+    <button type="submit" style="width:100%;padding:11px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Continue</button>
+  </form>
+
+  {{else if eq .Mode "done"}}
+  <p class="sub">Your code was right. This screen works once and stops working at {{.Expires.Format "15:04"}}.</p>
+  <div class="card" style="border-color:var(--brand)">
+    {{if and .OnPhone (eq .QRKind "link")}}
+    <p style="margin:0 0 12px"><a href="{{.Link}}"
+       style="display:inline-block;padding:12px 20px;border-radius:8px;background:var(--brand);color:#fff;font-weight:600;text-decoration:none">Set up this phone</a></p>
+    <p class="sub" style="font-size:13px;margin:0 0 12px">This installs a small app from Google Play and sets up a separate work profile. Your own apps, photos and messages stay yours.</p>
+    {{end}}
+    {{if .QRImage}}
+    <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center">
+      <img src="{{.QRImage}}" alt="QR code to set up the phone" style="max-width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:6px;background:#fff">
+      <div style="flex:1 1 220px">
+        <p class="k" style="margin:0 0 4px">{{if and .OnPhone (eq .QRKind "link")}}Or, from another screen{{else}}Scan with the phone{{end}}</p>
+        {{if eq .QRKind "link"}}
+        <p style="margin:0">Open the phone's camera, point it at this code, and tap the link that appears.</p>
+        {{else}}
+        <p style="margin:0 0 6px">For a <strong>new or freshly reset</strong> company phone. On the first welcome screen, tap the screen <strong>six times</strong> in the same spot. A scanner opens. Point it at this code.</p>
+        <p class="sub" style="font-size:12px;margin:0">The camera app will not read this one. It is for the welcome screen only.</p>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+
+  {{else if .Said}}
+  <p class="sub">Nothing is wrong with the link. Try again later, or ask whoever sent it to you.</p>
+
+  {{else}}
+  <p class="sub">This link does not work any more. It may have been used up, have run out of time, or have been cancelled. Ask whoever sent it to you for a new one.</p>
+  {{end}}
+  {{end}}
+</main>
+{{template "foot" .}}

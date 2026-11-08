@@ -119,7 +119,11 @@ func RecordToken(ctx context.Context, tx *data.Tx, t EnrollmentToken, label, ass
 func Tokens(ctx context.Context, tx *data.Tx) ([]TokenRecord, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT id, name, label, assigned_to, ownership, created_by, created_at, expires_at
-		  FROM android_enrollment_tokens ORDER BY created_at DESC LIMIT 50`)
+		  FROM android_enrollment_tokens
+		 -- A join link makes a token for every use. Hundreds of those would bury
+		 -- the few that matter, and the link's own row says how many were used.
+		 WHERE source <> 'join'
+		 ORDER BY created_at DESC LIMIT 50`)
 	if err != nil {
 		return nil, err
 	}

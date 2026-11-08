@@ -1479,8 +1479,58 @@ GRANT SELECT ON devices TO mdm_operator;"
   # somebody else here.
   echo "==> NEGATIVE CONTROL: an unverified email is believed"
   patch internal/identity/identity.go \
-    "		if !v {" \
-    "		if !v && false {"
+    "	if !present {" \
+    "	if true || !present {"
+  ;;
+
+--break-joincode)
+  # The code is not checked: the link alone gives the way in.
+  echo "==> NEGATIVE CONTROL: a join link needs no code"
+  patch internal/gateway/join.go \
+    "	if !android.VerifyJoinCode(r.PostFormValue(\"code\"), codeHash) {" \
+    "	if false && !android.VerifyJoinCode(r.PostFormValue(\"code\"), codeHash) {"
+  ;;
+
+--break-joinlock)
+  # Any number of wrong codes: the link is never paused, so a code can be guessed.
+  echo "==> NEGATIVE CONTROL: wrong codes never pause a link"
+  patch internal/android/join.go \
+    "	if count >= JoinMaxWrong {" \
+    "	if count >= 1<<30 {"
+  ;;
+
+--break-joincap)
+  # The device limit is not enforced, in the state check or in the statement
+  # that counts the use.
+  echo "==> NEGATIVE CONTROL: a join link has no device limit"
+  patch internal/android/join.go \
+    "	case j.Uses >= j.MaxUses:" \
+    "	case false:"
+  patch internal/android/join.go \
+    "		 WHERE id = \$1 AND status = 'active' AND expires_at > \$2 AND uses < max_uses" \
+    "		 WHERE id = \$1 AND status = 'active' AND expires_at > \$2"
+  ;;
+
+--break-joinexpiry)
+  # A link outlives its time.
+  echo "==> NEGATIVE CONTROL: a join link never runs out of time"
+  patch internal/android/join.go \
+    "	case !now.Before(j.ExpiresAt):" \
+    "	case false:"
+  patch internal/android/join.go \
+    "		 WHERE id = \$1 AND status = 'active' AND expires_at > \$2 AND uses < max_uses" \
+    "		 WHERE id = \$1 AND status = 'active' AND uses < max_uses"
+  ;;
+
+--break-joincancel)
+  # A cancelled link keeps working.
+  echo "==> NEGATIVE CONTROL: a cancelled join link still works"
+  patch internal/android/join.go \
+    "	case j.Status == \"cancelled\":" \
+    "	case false:"
+  patch internal/android/join.go \
+    "		 WHERE id = \$1 AND status = 'active' AND expires_at > \$2 AND uses < max_uses" \
+    "		 WHERE id = \$1 AND expires_at > \$2 AND uses < max_uses"
   ;;
 
 --break-localprotocol)
@@ -1541,7 +1591,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

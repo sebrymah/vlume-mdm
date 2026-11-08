@@ -126,6 +126,8 @@ type page struct {
 	// enrol their own phone, and the page where they do.
 	SelfEnrolOn bool
 	SelfEnrol   *SelfEnrol
+	// Join is the public page behind a join link.
+	Join *JoinView
 	// Local sign-in (0044): the tenant keeps its own accounts.
 	LocalMode bool
 	Users     *Users
@@ -857,6 +859,16 @@ type Android struct {
 	// better than drawing the wrong thing.
 	NewTokenQRImage template.URL
 	NewTokenQRKind  string
+	// Join links (0046): the list, and the one just made. The code and the
+	// link are shown once, here, and never again.
+	Joins         []android.JoinLink
+	NewJoinLink   string
+	NewJoinCode   string
+	NewJoinName   string
+	NewJoinUses   int
+	NewJoinExpiry time.Time
+	JoinLifetimes []JoinLifetime
+	Now           time.Time
 	// SelfEnrolMode is the setting people-enrol-themselves is in, and
 	// SelfEnrolLink the one address to send everybody.
 	SelfEnrolMode string
@@ -880,6 +892,52 @@ func (c *Console) AndroidPage(w http.ResponseWriter, r *http.Request, s Session,
 			p.Android = &a
 			return nil
 		})
+}
+
+// JoinLifetime is one choice in the "valid for" list.
+type JoinLifetime struct {
+	Hours int
+	Label string
+}
+
+// JoinView is the public page behind a join link: a box for the code, the
+// result, or a plain "this does not work any more". It carries no secret but
+// the one it was just given.
+type JoinView struct {
+	// Mode is code, done or closed.
+	Mode  string
+	Title string
+	Said  string
+	Name  string
+	// done: the way in for the phone, whichever kind it is.
+	Link    string
+	QRImage template.URL
+	QRKind  string
+	OnPhone bool
+	Expires time.Time
+}
+
+// JoinPage renders the public join page with the tenant's own branding. Like
+// LocalPage it has no session: the claim it is given names nobody.
+func (c *Console) JoinPage(w http.ResponseWriter, r *http.Request, claim string, status int, v JoinView) {
+	p := page{Title: v.Title, Brand: branding.Default(), Join: &v}
+	_ = c.store.WithTenant(r.Context(), claim, func(ctx context.Context, tx *data.Tx) error {
+		b, err := branding.Load(ctx, tx)
+		if err != nil {
+			return err
+		}
+		p.Brand = b
+		return nil
+	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// The address of this page is the secret. It must not travel in a Referer
+	// to anywhere the page links, and the page must not be kept.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.WriteHeader(status)
+	if err := tmpl.ExecuteTemplate(w, "join.html", p); err != nil {
+		http.Error(w, v.Title, status)
+	}
 }
 
 // ---------------------------------------------------------- self-enrol

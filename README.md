@@ -202,6 +202,12 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-selfcap       # remove the five-codes-a-day limit, expect a FAILURE
 ./run_go.sh --break-selfowner     # let a personal-only person ask for a company phone, expect a FAILURE
 ./run_go.sh --break-selfleaver    # let somebody who has left enrol a phone, expect a FAILURE
+./run_go.sh --break-unverifiedemail # believe an email the provider calls unverified, expect a FAILURE
+./run_go.sh --break-joincode      # let a join link in without its code, expect a FAILURE
+./run_go.sh --break-joinlock      # never pause a link after wrong codes, expect a FAILURE
+./run_go.sh --break-joincap       # let a join link enrol more devices than its limit, expect a FAILURE
+./run_go.sh --break-joinexpiry    # let a join link outlive its time, expect a FAILURE
+./run_go.sh --break-joincancel    # let a cancelled join link keep working, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -650,11 +656,62 @@ and the feeds do not.
 Migration `0045` adds the `tenant_enrolment` table (row-level security like
 every tenant table) and a `source` on Android tokens, `admin` or `self`.
 
+### Join links: no account needed
+
+Self-service asks everyone to sign in, which is right for staff and wrong for a
+phone handed to somebody with no account, or a team of five hundred. A **join
+link** is for them. An administrator makes one on the Android page: a name, how
+many devices it will set up, how long it lasts (1 day, 2 days, 1 week, 2 weeks or
+30 days), whether the phones are personal or company, and optionally one named
+person if it is for a single device. The page shows the **link** and a
+**six-digit code, once**. The administrator sends them by different routes, for
+example the link by email and the code by phone or chat. Nothing is emailed by the
+platform.
+
+Anybody can open the link, with no account. It asks for the code. Only a right
+code shows the way in (the QR code above, or a button on the phone), and each
+right code makes a fresh one-hour Google token and counts one use. The code is the
+link's code, so it stops working when the link does: at the device limit, at the
+expiry, or on cancel. One device is a link with a limit of one.
+
+The rules, each with a test and a control:
+
+- **No code, no way in.** Google is asked for nothing and the page shows no
+  link or picture until the code is right (`--break-joincode`).
+- **Guessing is limited.** Six digits is a million possibilities, so ten wrong
+  codes in an hour pause the link for an hour. The count is per link, because the
+  people holding a team link are strangers to each other, and each address is also
+  slowed to 20 tries a minute (`--break-joinlock`).
+- **The limit is real.** One SQL statement checks the state, the clock and the
+  limit and counts the use, so the last place cannot be taken twice. A test sends
+  fourteen people at five places at once and exactly five get in
+  (`--break-joincap`, `--break-joinexpiry`).
+- **Cancel is instant** (`--break-joincancel`). Devices already set up stay.
+- **Nothing is stored that can be read back.** The link's secret is kept only
+  as a SHA-256 and the code only as an argon2id hash (slow on purpose, since six
+  digits is a small space). The page that holds the secret in its address is
+  `no-store` with `Referrer-Policy: no-referrer`.
+- **One organisation's link is nothing at another's address.**
+
+The devices from a team link have no named owner, because the code is shared.
+They arrive unassigned and numbered (`Kano field team 17`), and each one is
+recorded against its link. The older direct Google token is still on the page,
+under Advanced, for a single device with no code.
+
+**Why a new public route and a new table** (the standing rule asks for the
+written reason): every other route needs a session and the person holding a join
+link has no account, so `GET/POST /join/{secret}` sit with the other public
+routes. The limits and the code's state do not fit on an existing record: a token
+is per device and has no count, a code or a lock, so there is a `join_links` table
+(migration `0046`). There is no new tag, command or scheduled job.
+
 ### Not built yet
 
-- Bulk invitation from a list (a CSV of people, each emailed their own code).
-- One reusable code for a whole team of company phones, with the devices
-  assigned to people afterwards.
+- Assigning the devices from a team link to people afterwards (a CSV of serial
+  number to person).
+- Showing, on a device's own page, which link it came through.
+- Laptops: the join link covers Android only. The laptop link on the Enrolments
+  page is still a token for the agent, not a page.
 - Windows: there is no Windows enrolment yet, so no Windows QR.
 
 ## Enrolment

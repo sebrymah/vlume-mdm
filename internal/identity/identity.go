@@ -188,27 +188,35 @@ func groupsFrom(all map[string]any, claim string) []string {
 
 // emailFrom picks the person's address from an identity token.
 //
-// An address the provider itself marks unverified (email_verified false) is
-// not an address to hang a person on: it is whatever the person typed into
-// their own profile. It is skipped, and the fallbacks the provider controls
-// (preferred_username, upn) are used instead. Platform features that turn an
-// address into a person (their own devices, a code for their own phone) are
-// only as honest as this function. A provider that sends no email_verified at
-// all is believed, because most do not send it and the alternative is that
-// nobody could sign in; see the README on what that leaves open.
+// An address the provider says is not verified is not an address to hang a
+// person on: it is whatever the person typed into their own profile. When
+// email_verified is present and is anything but true (or "true"), the email
+// claim is not used, and neither is preferred_username, which many providers
+// let a person edit. Only upn is kept as a fallback, because it is the
+// directory's own name for the account (Microsoft Entra) and not a profile
+// field. Platform features that turn an address into a person (their own
+// devices, a code for their own phone) are only as honest as this function.
+//
+// A provider that sends no email_verified at all is believed, because most do
+// not send it and the alternative is that nobody could sign in; see the README
+// on what that leaves open.
 func emailFrom(all map[string]any) string {
-	keys := []string{"email", "preferred_username", "upn"}
-	switch v := all["email_verified"].(type) {
+	v, present := all["email_verified"]
+	if !present {
+		return stringFrom(all, "email", "preferred_username", "upn")
+	}
+	switch t := v.(type) {
 	case bool:
-		if !v {
-			keys = keys[1:]
+		if t {
+			return stringFrom(all, "email", "preferred_username", "upn")
 		}
 	case string:
-		if strings.EqualFold(v, "false") {
-			keys = keys[1:]
+		if strings.EqualFold(t, "true") {
+			return stringFrom(all, "email", "preferred_username", "upn")
 		}
 	}
-	return stringFrom(all, keys...)
+	// Not verified, or not a value we understand: treat it as not verified.
+	return stringFrom(all, "upn")
 }
 
 func stringFrom(all map[string]any, keys ...string) string {

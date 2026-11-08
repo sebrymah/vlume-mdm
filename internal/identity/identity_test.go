@@ -185,11 +185,15 @@ func TestAnUnverifiedEmailIsNotAnAddress(t *testing.T) {
 		claims map[string]any
 		want   string
 	}{
-		"verified":                  {map[string]any{"email": "a@kalesi.example", "email_verified": true}, "a@kalesi.example"},
-		"no verified claim at all":  {map[string]any{"email": "a@kalesi.example"}, "a@kalesi.example"},
-		"unverified, boolean":       {map[string]any{"email": "ceo@kalesi.example", "email_verified": false}, ""},
-		"unverified, as text":       {map[string]any{"email": "ceo@kalesi.example", "email_verified": "false"}, ""},
-		"unverified, falls back to": {map[string]any{"email": "ceo@kalesi.example", "email_verified": false, "upn": "me@kalesi.example"}, "me@kalesi.example"},
+		"verified":                               {map[string]any{"email": "a@kalesi.example", "email_verified": true}, "a@kalesi.example"},
+		"no verified claim at all":               {map[string]any{"email": "a@kalesi.example"}, "a@kalesi.example"},
+		"unverified, boolean":                    {map[string]any{"email": "ceo@kalesi.example", "email_verified": false}, ""},
+		"unverified, as text":                    {map[string]any{"email": "ceo@kalesi.example", "email_verified": "false"}, ""},
+		"unverified, falls back to":              {map[string]any{"email": "ceo@kalesi.example", "email_verified": false, "upn": "me@kalesi.example"}, "me@kalesi.example"},
+		"unverified, not even the editable name": {map[string]any{"email": "ceo@kalesi.example", "email_verified": false, "preferred_username": "ceo@kalesi.example"}, ""},
+		"a value we do not understand":           {map[string]any{"email": "ceo@kalesi.example", "email_verified": 0}, ""},
+		"null":                                   {map[string]any{"email": "ceo@kalesi.example", "email_verified": nil}, ""},
+		"verified as text":                       {map[string]any{"email": "a@kalesi.example", "email_verified": "true"}, "a@kalesi.example"},
 	} {
 		if got := emailFrom(tc.claims); got != tc.want {
 			t.Errorf("%s: got %q, want %q", name, got, tc.want)

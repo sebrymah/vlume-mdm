@@ -516,6 +516,8 @@ func (g *Gateway) Handler() http.Handler {
 		mux.Handle("POST /android/bind", g.formPost(authz.ManageAccess, g.consoleAndroidBind))
 		mux.Handle("POST /android/unbind", g.formPost(authz.ManageAccess, g.consoleAndroidUnbind))
 		mux.Handle("POST /android/tokens", g.formPost(authz.EnrolDevice, g.consoleAndroidToken))
+		mux.Handle("POST /android/join", g.formPost(authz.EnrolDevice, g.consoleJoinCreate))
+		mux.Handle("POST /android/join/{id}/cancel", g.formPost(authz.EnrolDevice, g.consoleJoinCancel))
 		mux.Handle("POST /android/sync", g.formPost(authz.EnrolDevice, g.consoleAndroidSync))
 
 		mux.Handle("GET /notifications", g.page(authz.ChangePolicy, g.consoleNotifications))
@@ -664,6 +666,11 @@ func (g *Gateway) Handler() http.Handler {
 	// is why this one is out here with the sign-in routes rather than
 	// behind entry.
 	outer.Handle("POST /api/enrol", http.HandlerFunc(g.redeemEnrolment))
+	// A join link (0046): opened by somebody with no account, who holds the
+	// link's secret and has been given its code by another route. See join.go
+	// for the written reason this is out here and the rules it keeps.
+	outer.Handle("GET /join/{secret}", http.HandlerFunc(g.joinPage))
+	outer.Handle("POST /join/{secret}", http.HandlerFunc(g.joinSubmit))
 	outer.Handle("/", g.entry(mux))
 
 	// Sign-up lives on the one hostname that belongs to no tenant, and is

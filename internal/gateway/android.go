@@ -67,6 +67,8 @@ func (g *Gateway) loadAndroid(ctx context.Context, tx *data.Tx, r *http.Request,
 		return err
 	}
 	out.SelfEnrolMode = mode
+	out.JoinLifetimes = joinLifetimes()
+	out.Now = time.Now()
 	// The one address to send everybody: this tenant's own host, which is
 	// the one the request arrived on.
 	out.SelfEnrolLink = "https://" + r.Host + "/enrol"
@@ -85,6 +87,9 @@ func (g *Gateway) loadAndroid(ctx context.Context, tx *data.Tx, r *http.Request,
 			return err
 		}
 		out.Tokens = ts
+		if out.Joins, err = android.Joins(ctx, tx); err != nil {
+			return err
+		}
 	}
 	if err := tx.QueryRow(ctx,
 		`SELECT count(*) FROM devices WHERE os_family = 'android' AND android_name IS NOT NULL`).Scan(&out.Devices); err != nil {

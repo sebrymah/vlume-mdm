@@ -30,7 +30,7 @@ functions. The public page is exactly what Vercel is good at.
 | Supabase account | The database | Choose a region near your customers; Europe (London) is the closest Supabase offers to West Africa (assumption, check their current list) |
 | Fly.io account with a card | Runs the gateway | Roughly 5 to 6 US dollars a month for the size in `fly.toml` (assumption, check Fly's pricing page) |
 | Vercel account | The public page | Free tier is enough |
-| A mail server (SMTP) | Sign-up, invitations and reset links are emails | Your Zoho Mail works: `smtp.zoho.com:587`, STARTTLS |
+| A way to send email (SMTP) | Sign-up, invitations and reset links are emails | A sending service such as Resend: `smtp.resend.com:587`, user `resend`, the API key as password. Add the DNS records it gives you for `vlumesec.com` |
 | The Android service-account JSON | Android management | The file you already use in the demo |
 
 ## 1. Supabase: the database
@@ -100,8 +100,8 @@ cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" 
   MDM_SESSION_SIGNING_KEY="base64:$(openssl rand -base64 32)" \
   MDM_APP_DSN="<the app string above>" \
   MDM_OPERATOR_DSN="<the operator string above>" \
-  MDM_SMTP_SERVER="smtp.zoho.com:587" MDM_SMTP_FROM="<your sending address>" \
-  MDM_SMTP_USERNAME="<your sending address>" MDM_SMTP_PASSWORD="<its app password>"
+  MDM_SMTP_SERVER="smtp.resend.com:587" MDM_SMTP_SECURITY="starttls" MDM_SMTP_FROM="hello@vlumesec.com" \
+  MDM_SMTP_USERNAME="resend" MDM_SMTP_PASSWORD="<the Resend API key>"
 ```
 
 The other two keys can be regenerated at any time (it signs everyone out), so only the sealing key needs keeping.

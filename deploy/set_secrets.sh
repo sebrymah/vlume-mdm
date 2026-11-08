@@ -30,9 +30,12 @@ apppw="$(secret 'Password for mdm_app (the 40 characters the setup printed)')"; 
 oppw="$(secret 'Password for mdm_operator (the other 40 characters)')"; clean mdm_operator "$oppw"
 [ "$apppw" != "$oppw" ] || { echo "The two passwords are the same. They should be different. Nothing was set."; exit 1; }
 
-smtp="$(plain 'Mail server' 'smtp.zoho.com:587')"
-from="$(plain 'Sending address' 'hello@vlumesec.com')"
-smtppw="$(secret 'Zoho app password for that mailbox')"; clean smtp "$smtppw"
+smtp="$(plain 'Mail server (host:port)' 'smtp.resend.com:587')"
+sectype="$(plain 'Mail security (starttls or tls)' 'starttls')"
+case "$sectype" in starttls|tls) ;; *) echo "Mail security must be starttls or tls."; exit 1;; esac
+smtpuser="$(plain 'Mail username' 'resend')"; clean smtpuser "$smtpuser"
+from="$(plain 'Sending address' 'hello@vlumesec.com')"; clean from "$from"
+smtppw="$(secret 'Mail password (for Resend, the API key)')"; clean smtp "$smtppw"
 
 claim="base64:$(openssl rand -base64 32)"
 sess="base64:$(openssl rand -base64 32)"
@@ -45,7 +48,8 @@ sess="base64:$(openssl rand -base64 32)"
   printf 'MDM_OPERATOR_DSN="postgres://mdm_operator.%s:%s@%s:5432/postgres?sslmode=require"\n' "$ref" "$oppw" "$host"
   printf 'MDM_SMTP_SERVER="%s"\n' "$smtp"
   printf 'MDM_SMTP_FROM="%s"\n' "$from"
-  printf 'MDM_SMTP_USERNAME="%s"\n' "$from"
+  printf 'MDM_SMTP_SECURITY="%s"\n' "$sectype"
+  printf 'MDM_SMTP_USERNAME="%s"\n' "$smtpuser"
   printf 'MDM_SMTP_PASSWORD="%s"\n' "$smtppw"
 } | fly secrets import
 

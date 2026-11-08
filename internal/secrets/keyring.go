@@ -149,6 +149,16 @@ func (k *Keyring) openMaster(sealed []byte) ([]byte, error) {
 // under a transport key; nothing else outside this package needs it.
 func (k *Keyring) OpenMaster(sealed []byte) ([]byte, error) { return k.openMaster(sealed) }
 
+// SealMaster seals a value under the current master key directly, with no
+// tenant involved. It is for the platform owner's own secrets (an owner's
+// authenticator secret), which belong to no organisation and so have no
+// tenant key to be sealed under. OpenMaster opens what it makes, and a master
+// being rotated out still opens what it sealed.
+func (k *Keyring) SealMaster(plain []byte) ([]byte, error) {
+	cur, _ := k.masters()
+	return cur.Seal(plain)
+}
+
 // ErrUnopenable is a tenant key that neither the current master nor the
 // previous one can open. A rotation stops on it rather than guessing.
 var ErrUnopenable = errors.New("secrets: this tenant key opens under neither the current nor the previous master key")

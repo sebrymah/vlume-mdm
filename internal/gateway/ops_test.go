@@ -142,6 +142,23 @@ func TestTheOwnersConsoleAnswersOnItsOwnHostAndNowhereElse(t *testing.T) {
 			t.Errorf("%s on a customer's hostname served an owner page", p)
 		}
 	}
+	// Even a genuine owner session, sent to a customer's hostname, opens
+	// nothing: the pages are not mounted there at all.
+	f.onboard(t, f.browser(t), "host@example.com")
+	id, _ := f.g.dir.OperatorByEmail(context.Background(), "host@example.com")
+	tok, _, err := f.g.sessions.Start(session.Session{TenantID: opsRealm, Subject: opsSubject(id.ID), Email: id.Email, Role: opsRole})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := opsRaw(t, f.h, "GET", opsHost, "/orgs", map[string]string{opsCookie: tok}); rec.Code != 200 {
+		t.Fatalf("the genuine owner session does not open the owner's own host (%d)", rec.Code)
+	}
+	for _, p := range []string{"/orgs", "/licences", "/operators", "/events", "/signups", "/account", "/"} {
+		rec := opsRaw(t, f.h, "GET", hostA, p, map[string]string{opsCookie: tok})
+		if rec.Code == 200 && strings.Contains(rec.Body.String(), "Platform operations") {
+			t.Errorf("an owner session opened %s on a customer's hostname", p)
+		}
+	}
 	// And the owner's host serves no customer.
 	if rec := opsRaw(t, f.h, "GET", opsHost, "/api/devices", nil); strings.Contains(rec.Body.String(), "HQ-MBP-001") {
 		t.Error("the owner's host served a customer's devices")

@@ -40,6 +40,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/google/uuid"
+
 	"platform/internal/directory"
 	"platform/internal/identity"
 	"platform/internal/localauth"
@@ -622,8 +624,74 @@ Then a member of %q signs in and finishes setup from the console.
 		}
 		fmt.Printf("The open sign-up link for %s no longer works.\n", args[0])
 
+	case "operator-add":
+		// The platform owners' own accounts: who can sign in to the console
+		// that can suspend every customer. Adding one makes an invited
+		// account and prints the one link that lets that person choose a
+		// password and set up an authenticator.
+		fs := flag.NewFlagSet("operator-add", flag.ExitOnError)
+		name := fs.String("name", "", "the person's name")
+		host := fs.String("host", os.Getenv("MDM_OPERATOR_HOST"), "the console's hostname, for the link")
+		_ = fs.Parse(args)
+		if fs.NArg() != 1 {
+			fail("usage: tenantctl operator-add [--name \"Name\"] <email>")
+		}
+		o, err := dir.CreateOperator(ctx, fs.Arg(0), *name, "tenantctl")
+		if err != nil {
+			fail("%v", err)
+		}
+		printOperatorLink(ctx, dir, o.ID, o.Email, *host, fail)
+
+	case "operator-link":
+		// A fresh link for an owner: an invitation if they have no
+		// authenticator yet, a password reset if they have. Only the newest
+		// link for the account works.
+		fs := flag.NewFlagSet("operator-link", flag.ExitOnError)
+		host := fs.String("host", os.Getenv("MDM_OPERATOR_HOST"), "the console's hostname, for the link")
+		_ = fs.Parse(args)
+		if fs.NArg() != 1 {
+			fail("usage: tenantctl operator-link <email>")
+		}
+		o, err := dir.OperatorByEmail(ctx, directory.NormaliseOperatorEmail(fs.Arg(0)))
+		if err != nil {
+			fail("%v", err)
+		}
+		printOperatorLink(ctx, dir, o.ID, o.Email, *host, fail)
+
+	case "operator-reset-mfa":
+		// For an owner who has lost their phone and their recovery codes.
+		// Their account goes back to invited; a new link sets a password and
+		// a new authenticator.
+		if len(args) != 1 {
+			fail("usage: tenantctl operator-reset-mfa <email>")
+		}
+		o, err := dir.OperatorByEmail(ctx, directory.NormaliseOperatorEmail(args[0]))
+		if err != nil {
+			fail("%v", err)
+		}
+		if err := dir.ResetOperatorMFA(ctx, o.ID, "tenantctl"); err != nil {
+			fail("%v", err)
+		}
+		fmt.Printf("%s has no authenticator now. Make a link with: tenantctl operator-link %s\n", o.Email, o.Email)
+
+	case "operator-list":
+		ops, err := dir.ListOperators(ctx)
+		if err != nil {
+			fail("%v", err)
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(w, "EMAIL\tNAME\tSTATUS\tAUTHENTICATOR\tLAST SIGN-IN")
+		for _, o := range ops {
+			last := "never"
+			if o.LastSignInAt != nil {
+				last = o.LastSignInAt.Local().Format("2006-01-02 15:04")
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\n", o.Email, o.Name, o.Status, o.TOTPEnabled, last)
+		}
+		_ = w.Flush()
+
 	default:
-		fail("unknown command %q: use create, list, suspend, resume, add-host, signups, cancel-signup, usage, snapshot, set-plan, set-quota or feature", cmd)
+		fail("unknown command %q: use create, list, suspend, resume, add-host, signups, cancel-signup, operator-add, operator-link, operator-reset-mfa, operator-list, usage, snapshot, set-plan, set-quota or feature", cmd)
 	}
 }
 
@@ -710,4 +778,26 @@ func sealingKeys(ctx context.Context, fail func(string, ...any)) (current, previ
 		fail("%v. The client secrets are sealed with the same key the gateway runs with, or the gateway cannot open them.", err)
 	}
 	return current, previous
+}
+
+// printOperatorLink makes an owner's next link and prints it, once.
+func printOperatorLink(ctx context.Context, dir *directory.Directory, id uuid.UUID, email, host string, fail func(string, ...any)) {
+	token, purpose, expires, err := dir.IssueOperatorLink(ctx, id, "tenantctl", time.Now().UTC())
+	if err != nil {
+		fail("%v", err)
+	}
+	path := "/accept/"
+	if purpose == "reset" {
+		path = "/reset/"
+	}
+	base := "https://" + host
+	if host == "" {
+		base = "https://<the console's hostname>"
+	}
+	what := "choose a password and set up an authenticator"
+	if purpose == "reset" {
+		what = "choose a new password"
+	}
+	fmt.Printf("\nFor %s to %s. Send it only to them. It works once, until %s, and is not shown again:\n\n  %s%s%s\n\n",
+		email, what, expires.Local().Format("2006-01-02 15:04"), base, path, token)
 }

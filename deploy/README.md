@@ -167,6 +167,36 @@ In the Vercel project, **Settings, Domains**: add `mdm.vlumesec.com` and, if the
 3. Sign in at `https://<name>.mdm.vlumesec.com/signin`, set up the authenticator app, and you are in as Super Admin.
 4. Look at the audit trail: the sign-in line should show your real address, not one starting `172.16`. If it shows `172.16`, tell me and I will change `MDM_TRUSTED_PROXIES`.
 
+## 6. The owner's console
+
+Your own console, for the people who run the platform: every organisation, usage against
+each allowance, sign-ups, licences, and the owners themselves. It answers on
+`https://ops.mdm.vlumesec.com`. The `*.mdm` DNS record and the wildcard certificate from step 3
+already cover that name, so there is nothing to add at the DNS provider or to `fly certs`.
+`ops` is reserved, so no customer can take it. It is switched on by `MDM_OPERATOR_HOST` in
+`fly.toml`.
+
+After the code is pushed, in this order:
+
+```bash
+cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform/deploy/supabase" && ./apply.sh
+```
+
+```bash
+cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly deploy
+```
+
+The first owner is made on the machine. It prints one link, once. Open it, choose a password,
+scan the QR code with an authenticator app, and keep the ten recovery codes it shows:
+
+```bash
+cd "/Users/tobi.adeyemo/BG_Cowork/Claude Cowork/Projects/MDM_Platform/platform" && fly ssh console -C "tenantctl operator-add --name Tobi --host ops.mdm.vlumesec.com tobi.adeyemo@babbangona.com"
+```
+
+After that, owners are added, given fresh links, disabled and reset from the console's Owners page.
+If you ever lose every owner's phone and recovery codes, the command line is the way back:
+`tenantctl operator-reset-mfa <email>` then `tenantctl operator-link --host ops.mdm.vlumesec.com <email>`.
+
 ## Running a one-off command (list organisations, add a host)
 
 ```bash

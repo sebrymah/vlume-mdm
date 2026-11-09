@@ -1,0 +1,405 @@
+{{define "opshead"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{.Title}} · Platform operations</title>
+<style>
+:root{--ink:#14212e;--muted:#5b6b7b;--line:#dde4ea;--bg:#f4f6f8;--card:#fff;--brand:#12306b;--ok:#146c43;--warn:#9a5b00;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--ink:#e7edf3;--muted:#9fb0c0;--line:#2a3a4b;--bg:#0d1620;--card:#142030;--brand:#8fb3ff;--ok:#6fd49c;--warn:#f0b24d;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header.bar{background:#0b1f3a;color:#fff;display:flex;align-items:center;gap:16px;padding:10px 20px;flex-wrap:wrap}
+header.bar strong{letter-spacing:.02em}
+header.bar .tag{font-size:12px;background:#a31d1d;border-radius:4px;padding:2px 8px}
+header.bar form{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:13px}
+nav.menu{display:flex;gap:4px;flex-wrap:wrap;padding:8px 20px;background:var(--card);border-bottom:1px solid var(--line)}
+nav.menu a{padding:6px 12px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:14px}
+nav.menu a.on{background:var(--brand);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:22px 20px 60px}
+h1{font-size:24px;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:17px;margin:26px 0 10px}
+.sub{color:var(--muted);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.stat b{display:block;font-size:28px;line-height:1.1}
+.stat span{color:var(--muted);font-size:13px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:rgba(127,140,155,.08)}
+tr:last-child td{border-bottom:0}
+.scroll{overflow-x:auto}
+.badge{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;border:1px solid var(--line)}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .muted{color:var(--muted)}
+.said{border-left:4px solid var(--bad);background:rgba(179,38,30,.08);padding:10px 12px;border-radius:6px;margin:0 0 16px}
+.notice{border-left:4px solid var(--ok);background:rgba(20,108,67,.08);padding:10px 12px;border-radius:6px;margin:0 0 16px}
+.banner{background:rgba(163,29,29,.07);border:1px solid rgba(163,29,29,.3);border-radius:8px;padding:8px 12px;font-size:13px;margin:0 0 18px}
+label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);width:100%}
+button,.btn{font:inherit;font-weight:600;padding:8px 14px;border-radius:6px;border:0;background:var(--brand);color:#fff;cursor:pointer;text-decoration:none;display:inline-block}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.danger{background:var(--bad)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.row>*{flex:1 1 160px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.bar-meter{height:8px;border-radius:99px;background:var(--line);overflow:hidden;min-width:90px}
+.bar-meter i{display:block;height:100%;background:var(--ok)}
+.bar-meter.near i{background:var(--warn)} .bar-meter.over i{background:var(--bad)}
+.center{max-width:430px;margin:50px auto 0}
+</style>
+</head>
+<body>
+<header class="bar">
+  <strong>Platform operations</strong><span class="tag">OWNER</span>
+  {{if .Who}}<form method="post" action="/signout"><span>{{.Who.Email}}</span>
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><button class="ghost" style="color:#fff;border-color:rgba(255,255,255,.4)" type="submit">Sign out</button></form>{{end}}
+</header>
+{{if .Who}}<nav class="menu">{{range .Nav}}<a href="{{.Href}}" {{if .Active}}class="on"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
+{{end}}
+
+{{define "opsfoot"}}</body></html>{{end}}
+
+{{define "opsmsg"}}
+{{if .Said}}<p class="said" role="alert">{{.Said}}</p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+{{end}}
+
+{{/* ---------------------------------------------------------------- sign-in */}}
+{{define "ops_signin"}}{{template "opshead" .}}
+<main class="center">
+  <h1>Platform operations</h1>
+  <p class="sub">For the owners of the platform. Organisations sign in at their own address.</p>
+  {{template "opsmsg" .}}
+  <form method="post" action="/signin" class="card" autocomplete="on">
+    <label>Email</label><input name="email" type="email" required autofocus autocomplete="username" value="{{.Email}}" style="margin-bottom:12px">
+    <label>Password</label><input name="password" type="password" required autocomplete="current-password" style="margin-bottom:14px">
+    <button type="submit" style="width:100%">Continue</button>
+  </form>
+  <p class="sub" style="font-size:13px">A second step follows. There is no password reset by email: ask another owner for a link.</p>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_mfa"}}{{template "opshead" .}}
+<main class="center">
+  <h1>Second step</h1>
+  <p class="sub">Open your authenticator app and type the six-digit code. Lost your phone? Type one of your recovery codes instead.</p>
+  {{template "opsmsg" .}}
+  <form method="post" action="/signin/mfa" class="card">
+    <label>Code</label>
+    <input name="code" required autofocus autocomplete="one-time-code" style="margin-bottom:14px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.1em">
+    <button type="submit" style="width:100%">Sign in</button>
+  </form>
+  <p class="sub" style="font-size:13px"><a href="/signin">Start again</a></p>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_enrol"}}{{template "opshead" .}}
+<main class="center">
+  <h1>Set up your authenticator</h1>
+  <p class="sub">Owners always sign in with a second step. Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password), then type the code it shows.</p>
+  {{template "opsmsg" .}}
+  <div class="card" style="text-align:center">
+    <img src="{{.QR}}" alt="QR code for your authenticator app" width="220" height="220" style="image-rendering:pixelated;background:#fff;padding:4px;border-radius:6px">
+    <p class="sub" style="font-size:12.5px;margin:10px 0 0">Cannot scan? Enter this key by hand:<br><code>{{.Secret}}</code></p>
+  </div>
+  <form method="post" action="/signin/enrol" class="card">
+    <label>Code from the app</label>
+    <input name="code" required autofocus autocomplete="one-time-code" inputmode="numeric" style="margin-bottom:14px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.1em">
+    <button type="submit" style="width:100%">Turn it on</button>
+  </form>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_codes"}}{{template "opshead" .}}
+<main class="center">
+  <h1>Keep these recovery codes</h1>
+  <p class="sub">Each works once if you lose your phone. They are shown <strong>only now</strong>. Put them in a password manager.</p>
+  <div class="card"><pre style="margin:0;font-size:15px;line-height:1.8">{{range .Codes}}{{.}}
+{{end}}</pre></div>
+  <a class="btn" href="/" style="width:100%;text-align:center">I have saved them</a>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_link"}}{{template "opshead" .}}
+<main class="center">
+  <h1>{{.Title}}</h1>
+  <p class="sub">For <strong>{{.Email}}</strong>. Choose a password of 12 or more characters that is not built from your name or address.</p>
+  {{template "opsmsg" .}}
+  <form method="post" class="card" autocomplete="off">
+    <label>New password</label><input name="password" type="password" required autofocus autocomplete="new-password" style="margin-bottom:12px">
+    <label>Again</label><input name="confirm" type="password" required autocomplete="new-password" style="margin-bottom:14px">
+    <button type="submit" style="width:100%">Set password</button>
+  </form>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_closed"}}{{template "opshead" .}}
+<main class="center">
+  <h1>{{.Title}}</h1>
+  <p class="sub">{{.Said}}</p>
+  <p><a href="/signin">Sign in</a></p>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{/* --------------------------------------------------------------- overview */}}
+{{define "ops_dash"}}{{template "opshead" .}}
+<main>
+  <h1>Overview</h1>
+  <p class="sub">Every organisation on the platform, as a shell and as counts. You cannot see inside one: no device, person or policy.</p>
+  {{template "opsmsg" .}}
+  {{with .Dash}}
+  <div class="grid">
+    <div class="stat"><b>{{.Orgs}}</b><span>organisations</span></div>
+    <div class="stat"><b>{{.Active}}</b><span>active</span></div>
+    <div class="stat"><b class="{{if .Suspended}}warn{{end}}">{{.Suspended}}</b><span>suspended</span></div>
+    <div class="stat"><b>{{.Devices}}</b><span>devices across all</span></div>
+    <div class="stat"><b>{{.NewWeek}}</b><span>new in 7 days</span></div>
+    <div class="stat"><b>{{.NewMonth}}</b><span>new in 30 days</span></div>
+    <div class="stat"><b class="{{if .NearCap}}warn{{end}}">{{.NearCap}}</b><span>at 80% of their device allowance</span></div>
+    <div class="stat"><b>{{.PendingSignups}}</b><span>sign-ups in progress</span></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div>
+      <h2 style="margin-top:0">By plan</h2>
+      <table><thead><tr><th>Plan</th><th>Organisations</th></tr></thead><tbody>
+      {{range .ByPlan}}<tr><td>{{.Label}}</td><td>{{.N}}</td></tr>{{else}}<tr><td colspan="2" class="muted">None yet.</td></tr>{{end}}
+      </tbody></table>
+    </div>
+    <div>
+      <h2 style="margin-top:0">Newest organisations</h2>
+      <table><thead><tr><th>Name</th><th>Plan</th><th>Devices</th></tr></thead><tbody>
+      {{range .Newest}}<tr><td><a href="/orgs/{{.Slug}}">{{.Name}}</a></td><td>{{.Plan}}</td><td>{{.Devices}}</td></tr>{{else}}<tr><td colspan="3" class="muted">None yet.</td></tr>{{end}}
+      </tbody></table>
+    </div>
+  </div>
+  {{end}}
+</main>{{template "opsfoot" .}}{{end}}
+
+{{/* ---------------------------------------------------------- organisations */}}
+{{define "ops_orgs"}}{{template "opshead" .}}
+<main>
+  <h1>Organisations</h1>
+  <p class="sub">{{len .Orgs}} shown. Devices are the count in use against each organisation's allowance.</p>
+  {{template "opsmsg" .}}
+  <form method="get" action="/orgs" class="row" style="margin-bottom:14px">
+    <div><label>Search name, address or short name</label><input name="q" value="{{.Query}}" placeholder="kalesi"></div>
+    <div style="flex:0 1 190px"><label>Status</label><select name="status">
+      <option value="">Any</option>
+      <option value="active" {{if eq .Filter "active"}}selected{{end}}>Active</option>
+      <option value="suspended" {{if eq .Filter "suspended"}}selected{{end}}>Suspended</option>
+      <option value="near" {{if eq .Filter "near"}}selected{{end}}>Near their device limit</option>
+    </select></div>
+    <div style="flex:0 0 auto"><button type="submit">Filter</button></div>
+  </form>
+  <div class="scroll"><table>
+    <thead><tr><th>Organisation</th><th>Plan</th><th>Status</th><th>Devices</th><th>Admin seats</th><th>Created</th></tr></thead>
+    <tbody>
+    {{range .Orgs}}<tr>
+      <td><a href="/orgs/{{.Slug}}">{{.Name}}</a><br><span class="muted" style="font-size:12px">{{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h}}{{end}}</span></td>
+      <td>{{.Plan}}</td>
+      <td><span class="badge {{if eq .Status "active"}}ok{{else}}warn{{end}}">{{.Status}}</span></td>
+      {{if .NoUsage}}<td class="muted">unknown</td><td class="muted">unknown</td>{{else}}<td>{{.Devices}} of {{.DeviceCap}}
+        <div class="bar-meter {{.Flag}}"><i style="width:{{.Percent}}%"></i></div></td>
+      <td>{{.Seats}} of {{.SeatCap}}</td>{{end}}
+      <td>{{.CreatedAt.Format "2 Jan 2006"}}</td>
+    </tr>{{else}}<tr><td colspan="6" class="muted">No organisation matches.</td></tr>{{end}}
+    </tbody></table></div>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_org"}}{{template "opshead" .}}
+<main>
+  {{with .Org}}
+  <p class="sub" style="margin-bottom:4px"><a href="/orgs">Organisations</a> /</p>
+  <h1>{{.Name}} <span class="badge {{if eq .Status "active"}}ok{{else}}warn{{end}}" style="font-size:13px;vertical-align:middle">{{.Status}}</span></h1>
+  <p class="sub">{{.Slug}} · {{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h}}{{end}} · created {{.CreatedAt.Format "2 Jan 2006"}} · region {{.Region}}</p>
+  {{end}}
+  {{template "opsmsg" .}}
+  {{with .Org}}
+  <div class="grid">
+    <div class="stat"><b>{{.Usage.ActiveDevices}} <span style="font-size:15px">of {{.DeviceCap}}</span></b><span>devices in use</span>
+      <div class="bar-meter {{.Flag}}" style="margin-top:8px"><i style="width:{{.Percent}}%"></i></div></div>
+    <div class="stat"><b>{{.Usage.SeatsUsed}} <span style="font-size:15px">of {{.SeatCap}}</span></b><span>admin seats in use</span></div>
+    <div class="stat"><b>{{.Usage.Enrolled30d}}</b><span>devices enrolled in 30 days</span></div>
+    <div class="stat"><b>{{.Usage.Commands30d}}</b><span>commands in 30 days</span></div>
+    <div class="stat"><b>{{.Tenant.Plan}}</b><span>plan</span></div>
+    <div class="stat"><b>{{.Tenant.APIRatePerMin}}</b><span>requests a minute allowed</span></div>
+  </div>
+
+  <h2>Licence</h2>
+  <div class="card">
+    <table><thead><tr><th>Feature</th><th>Now</th><th>Comes from</th></tr></thead><tbody>
+      {{range .Features}}<tr><td>{{.Name}}</td><td>{{if .On}}<span class="ok">on</span>{{else}}<span class="muted">off</span>{{end}}</td>
+        <td class="muted">{{if .FromPlan}}the {{$.Org.Tenant.Plan}} plan{{else}}switched by an owner (the plan says {{if .PlanValue}}on{{else}}off{{end}}){{end}}</td></tr>{{end}}
+    </tbody></table>
+  </div>
+
+  <h2>Change this organisation</h2>
+  <div class="card">
+    <h3 style="margin:0 0 8px;font-size:15px">Status</h3>
+    {{if eq .Status "suspended"}}
+    <form method="post" action="/orgs/{{.Slug}}/resume">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <p class="sub" style="margin:0 0 10px">Suspended. People cannot sign in and managed devices cannot reach the platform. Devices keep working on their own.</p>
+      <button type="submit">Resume</button>
+    </form>
+    {{else if or (eq .Status "active") (eq .Status "near_cap")}}
+    <form method="post" action="/orgs/{{.Slug}}/suspend">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <p class="sub" style="margin:0 0 10px">Suspending locks every person out and stops managed devices reaching the platform until it is resumed. Nothing is deleted.</p>
+      <div class="row">
+        <div><label>Why (written to the activity record)</label><input name="reason" maxlength="200" required></div>
+        <div><label>Type <code>{{.Slug}}</code> to confirm</label><input name="confirm" autocomplete="off" required></div>
+        <div style="flex:0 0 auto"><button class="danger" type="submit">Suspend</button></div>
+      </div>
+    </form>
+    {{else}}<p class="muted" style="margin:0">This organisation is {{.Status}}. There is nothing to change here.</p>{{end}}
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 8px;font-size:15px">Plan</h3>
+    <form method="post" action="/orgs/{{.Slug}}/plan">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <p class="sub" style="margin:0 0 10px">Moving to a plan gives the organisation that plan's device allowance, admin seats and request rate, and clears any switches set for this organisation alone.</p>
+      <div class="row">
+        <div><label>Plan</label><select name="plan">{{range .Plans}}<option value="{{.Name}}" {{if eq .Name $.Org.Tenant.Plan}}selected{{end}}>{{.Name}} ({{.DeviceCap}} devices, {{.AdminSeats}} seats)</option>{{end}}</select></div>
+        <div style="flex:0 0 auto"><button type="submit">Move to this plan</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 8px;font-size:15px">Allowance</h3>
+    <form method="post" action="/orgs/{{.Slug}}/quota">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <p class="sub" style="margin:0 0 10px">Sets this organisation's numbers apart from its plan. The plan does not change.</p>
+      <div class="row">
+        <div><label>Devices</label><input name="devices" type="number" min="1" value="{{.Tenant.DeviceCap}}" required></div>
+        <div><label>Admin seats</label><input name="seats" type="number" min="1" value="{{.Tenant.AdminSeats}}" required></div>
+        <div><label>Requests a minute</label><input name="rate" type="number" min="1" value="{{.Tenant.APIRatePerMin}}" required></div>
+        <div style="flex:0 0 auto"><button type="submit">Save</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 8px;font-size:15px">Switches</h3>
+    <table><thead><tr><th>Feature</th><th>Now</th><th>Set it</th></tr></thead><tbody>
+    {{range .Features}}<tr><td>{{.Name}}</td><td>{{if .On}}<span class="ok">on</span>{{else}}<span class="muted">off</span>{{end}}</td>
+      <td><form method="post" action="/orgs/{{$.Org.Slug}}/feature" class="row" style="gap:6px">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="feature" value="{{.Name}}">
+        <button class="ghost" name="to" value="on" type="submit" style="flex:0 0 auto">On</button>
+        <button class="ghost" name="to" value="off" type="submit" style="flex:0 0 auto">Off</button>
+        <button class="ghost" name="to" value="plan" type="submit" style="flex:0 0 auto">What the plan says</button>
+      </form></td></tr>{{end}}
+    </tbody></table>
+  </div>
+
+  <h2>Usage, last 30 days</h2>
+  <div class="scroll"><table><thead><tr><th>Day</th><th>Devices</th><th>Allowance</th><th>Commands (30d)</th><th>Plan</th></tr></thead><tbody>
+    {{range .History}}<tr><td>{{.TakenOn.Format "2 Jan"}}</td><td>{{.ActiveDevices}}</td><td>{{.DeviceCap}}</td><td>{{.Commands30d}}</td><td>{{.Plan}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">No daily counts yet. They are taken once a day.</td></tr>{{end}}
+  </tbody></table></div>
+  {{end}}
+</main>{{template "opsfoot" .}}{{end}}
+
+{{/* ---------------------------------------------------------------- sign-ups */}}
+{{define "ops_signups"}}{{template "opshead" .}}
+<main>
+  <h1>Sign-ups</h1>
+  <p class="sub">Companies that asked for an organisation. A finished one has become an organisation.</p>
+  {{template "opsmsg" .}}
+  <div class="scroll"><table>
+    <thead><tr><th>Company</th><th>Address</th><th>Short name</th><th>State</th><th>Asked</th><th>From</th><th></th></tr></thead>
+    <tbody>
+    {{range .Signups}}<tr>
+      <td>{{.Company}}</td><td>{{.Email}}</td>
+      <td>{{if .TenantSlug}}<a href="/orgs/{{.TenantSlug}}">{{.TenantSlug}}</a>{{else}}{{.Slug}}{{end}}</td>
+      <td><span class="badge">{{.State}}</span></td>
+      <td>{{.RequestedAt.Format "2 Jan 15:04"}}</td><td class="muted">{{.RequestedIP}}</td>
+      <td>{{if or (eq .State "waiting") (eq .State "opened")}}<form method="post" action="/signups/cancel"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="email" value="{{.Email}}"><button class="ghost" type="submit">Cancel link</button></form>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="7" class="muted">No sign-ups yet.</td></tr>{{end}}
+    </tbody></table></div>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{/* ---------------------------------------------------------------- licences */}}
+{{define "ops_licences"}}{{template "opshead" .}}
+<main>
+  <h1>Licences</h1>
+  <p class="sub">What each plan gives, and how every organisation is using what it has. An organisation moved to a plan takes that plan's numbers; an owner can then set one organisation's numbers apart from its plan.</p>
+  {{template "opsmsg" .}}
+  <h2 style="margin-top:0">Plans</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Plan</th><th>Devices</th><th>Admin seats</th><th>Requests a minute</th><th>Android</th><th>Network feed</th><th>Weekly report</th></tr></thead>
+    <tbody>
+    {{range .Plans}}<tr><td><strong>{{.Name}}</strong></td><td>{{.DeviceCap}}</td><td>{{.AdminSeats}}</td><td>{{.APIRatePerMin}}</td>
+      <td>{{if index .Features "android"}}yes{{else}}no{{end}}</td><td>{{if index .Features "network_feed"}}yes{{else}}no{{end}}</td><td>{{if index .Features "weekly_report"}}yes{{else}}no{{end}}</td></tr>{{end}}
+    </tbody></table></div>
+  <h2>Use against allowance</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Organisation</th><th>Plan</th><th>Devices</th><th>Admin seats</th><th></th></tr></thead>
+    <tbody>
+    {{range .Orgs}}<tr>
+      <td><a href="/orgs/{{.Slug}}">{{.Name}}</a></td><td>{{.Plan}}</td>
+      {{if .NoUsage}}<td class="muted">unknown</td><td class="muted">unknown</td>{{else}}<td>{{.Devices}} of {{.DeviceCap}} <div class="bar-meter {{.Flag}}"><i style="width:{{.Percent}}%"></i></div></td>
+      <td>{{.Seats}} of {{.SeatCap}}</td>{{end}}
+      <td>{{if eq .Flag "over"}}<span class="badge bad">at the limit</span>{{else if eq .Flag "near"}}<span class="badge warn">near the limit</span>{{end}}</td>
+    </tr>{{else}}<tr><td colspan="5" class="muted">No organisations yet.</td></tr>{{end}}
+    </tbody></table></div>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{/* --------------------------------------------------------------- operators */}}
+{{define "ops_operators"}}{{template "opshead" .}}
+<main>
+  <h1>Owners</h1>
+  <p class="sub">The people who can sign in to this console. Each has a password and an authenticator, always.</p>
+  {{template "opsmsg" .}}
+  {{if .NewLink}}<div class="card"><p style="margin-top:0"><strong>A link for {{.NewLinkFor}}.</strong> Send it only to them. It works once and is not shown again.</p>
+    <p style="margin-bottom:0"><code style="word-break:break-all;user-select:all">{{.NewLink}}</code></p></div>{{end}}
+  <div class="scroll"><table>
+    <thead><tr><th>Owner</th><th>Status</th><th>Added</th><th>Last signed in</th><th></th></tr></thead>
+    <tbody>
+    {{range .Operators}}<tr>
+      <td>{{.Email}}{{if .Name}}<br><span class="muted" style="font-size:12px">{{.Name}}</span>{{end}}{{if .You}} <span class="badge">you</span>{{end}}</td>
+      <td><span class="badge {{if eq .Status "active"}}ok{{else if eq .Status "disabled"}}bad{{else}}warn{{end}}">{{.Status}}</span>{{if .Locked $.Now}} <span class="badge bad">locked</span>{{end}}</td>
+      <td>{{.CreatedAt.Format "2 Jan 2006"}} by {{.CreatedBy}}</td>
+      <td>{{if .LastSignInAt}}{{.LastSignInAt.Format "2 Jan 15:04"}}{{else}}<span class="muted">never</span>{{end}}</td>
+      <td><div class="row" style="gap:6px;flex-wrap:wrap">
+        {{if ne .Status "disabled"}}<form method="post" action="/operators/{{.ID}}/link"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="ghost" type="submit">New link</button></form>{{end}}
+        {{if not .You}}
+          {{if eq .Status "disabled"}}<form method="post" action="/operators/{{.ID}}/enable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="ghost" type="submit">Enable</button></form>
+          {{else}}
+            <form method="post" action="/operators/{{.ID}}/reset-mfa"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="ghost" type="submit">Reset authenticator</button></form>
+            <form method="post" action="/operators/{{.ID}}/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="danger" type="submit">Disable</button></form>
+          {{end}}
+        {{end}}
+      </div></td>
+    </tr>{{end}}
+    </tbody></table></div>
+
+  <h2>Add an owner</h2>
+  <form method="post" action="/operators/invite" class="card">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="sub" style="margin:0 0 10px">They get one link that works once, for a week. It lets them choose a password and set up an authenticator. Nothing is emailed: you send the link yourself.</p>
+    <div class="row">
+      <div><label>Email</label><input name="email" type="email" required></div>
+      <div><label>Name</label><input name="name" maxlength="100"></div>
+      <div style="flex:0 0 auto"><button type="submit">Make a link</button></div>
+    </div>
+  </form>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{/* ---------------------------------------------------------------- activity */}}
+{{define "ops_events"}}{{template "opshead" .}}
+<main>
+  <h1>Activity</h1>
+  <p class="sub">What owners have done. It can be added to and read, never changed or removed.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Detail</th></tr></thead>
+    <tbody>
+    {{range .Events}}<tr><td>{{.At.Format "2 Jan 15:04:05"}}</td><td>{{.Actor}}</td><td><code>{{.Action}}</code></td><td>{{.Target}}</td><td class="muted">{{.Detail}}</td></tr>
+    {{else}}<tr><td colspan="5" class="muted">Nothing yet.</td></tr>{{end}}
+    </tbody></table></div>
+</main>{{template "opsfoot" .}}{{end}}
+
+{{define "ops_account"}}{{template "opshead" .}}
+<main>
+  <h1>Your account</h1>
+  {{template "opsmsg" .}}
+  {{with .Who}}<div class="card"><p style="margin:0"><strong>{{.Name}}</strong> {{.Email}}</p></div>{{end}}
+</main>{{template "opsfoot" .}}{{end}}

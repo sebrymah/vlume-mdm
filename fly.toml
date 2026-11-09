@@ -19,6 +19,8 @@ primary_region = "lhr"       # EDIT: pick the region nearest your database and c
   MDM_SIGNUP_HOST = "app.mdm.vlumesec.com"
   MDM_SIGNUP_TENANT_DOMAIN = "mdm.vlumesec.com"   # customers get <name>.mdm.vlumesec.com
   MDM_SIGNUP_PRODUCT_NAME = "Vlume"
+  # The owners' console: one hostname, its own sign-in, mandatory authenticator.
+  MDM_OPERATOR_HOST = "ops.mdm.vlumesec.com"
 
 [http_service]
   internal_port = 8080

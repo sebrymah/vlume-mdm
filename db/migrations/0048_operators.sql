@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS operator_accounts (
   created_by         text NOT NULL,
   created_at         timestamptz NOT NULL DEFAULT now(),
   last_sign_in_at    timestamptz,
+  -- Every session that began before this moment is over. Set when the account is
+  -- disabled, its password changes or its second factor is reset.
+  sessions_invalid_before timestamptz,
   CHECK (status <> 'active' OR (password_hash <> '' AND totp_enabled)),
   CHECK (NOT totp_enabled OR totp_secret_sealed IS NOT NULL)
 );

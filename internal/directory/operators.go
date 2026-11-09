@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"platform/internal/localauth"
 )
 
 // The platform owner's own accounts (0048). They belong to no organisation, so
@@ -19,6 +21,12 @@ import (
 const (
 	OperatorLockAfter = 5
 	OperatorLockFor   = 15 * time.Minute
+)
+
+// How long a link works: an invitation a week, a password reset an hour.
+const (
+	OperatorInviteLife = 7 * 24 * time.Hour
+	OperatorResetLife  = time.Hour
 )
 
 var (
@@ -44,6 +52,9 @@ type Operator struct {
 	CreatedBy    string
 	CreatedAt    time.Time
 	LastSignInAt *time.Time
+	// SessionsInvalidBefore ends every session that began before it: set when
+	// the account is disabled, its password changes or its second factor is reset.
+	SessionsInvalidBefore *time.Time
 }
 
 // Locked says whether the account is refusing sign-ins at a moment.
@@ -52,11 +63,11 @@ func (o Operator) Locked(now time.Time) bool {
 }
 
 const operatorColumns = `id, email, name, status, password_hash, totp_secret_sealed, totp_enabled,
-	totp_last_step, failed_count, locked_until, created_by, created_at, last_sign_in_at`
+	totp_last_step, failed_count, locked_until, created_by, created_at, last_sign_in_at, sessions_invalid_before`
 
 func scanOperator(row pgx.Row, o *Operator) error {
 	return row.Scan(&o.ID, &o.Email, &o.Name, &o.Status, &o.PasswordHash, &o.TOTPSealed, &o.TOTPEnabled,
-		&o.TOTPLastStep, &o.FailedCount, &o.LockedUntil, &o.CreatedBy, &o.CreatedAt, &o.LastSignInAt)
+		&o.TOTPLastStep, &o.FailedCount, &o.LockedUntil, &o.CreatedBy, &o.CreatedAt, &o.LastSignInAt, &o.SessionsInvalidBefore)
 }
 
 // NormaliseOperatorEmail lower-cases and trims an address, so one person
@@ -151,7 +162,7 @@ func (d *Directory) PeekOperatorToken(ctx context.Context, hash []byte, purpose 
 	var o Operator
 	err := scanOperator(d.pool.QueryRow(ctx, `
 		SELECT a.id, a.email, a.name, a.status, a.password_hash, a.totp_secret_sealed, a.totp_enabled,
-		       a.totp_last_step, a.failed_count, a.locked_until, a.created_by, a.created_at, a.last_sign_in_at
+		       a.totp_last_step, a.failed_count, a.locked_until, a.created_by, a.created_at, a.last_sign_in_at, a.sessions_invalid_before
 		  FROM operator_tokens t JOIN operator_accounts a ON a.id = t.account_id
 		 WHERE t.token_hash = $1 AND t.purpose = $2 AND t.used_at IS NULL AND t.expires_at > $3
 		   AND a.status <> 'disabled'`, hash, purpose, now), &o)
@@ -181,7 +192,7 @@ func (d *Directory) SpendOperatorToken(ctx context.Context, hash []byte, purpose
 // stays invited: it becomes active only when its second factor is enrolled.
 func (d *Directory) SetOperatorPassword(ctx context.Context, id uuid.UUID, hash string, now time.Time) error {
 	tag, err := d.pool.Exec(ctx, `UPDATE operator_accounts
-		SET password_hash = $2, password_set_at = $3, failed_count = 0, locked_until = NULL
+		SET password_hash = $2, password_set_at = $3, sessions_invalid_before = $3, failed_count = 0, locked_until = NULL
 		WHERE id = $1 AND status <> 'disabled'`, id, hash, now)
 	if err != nil {
 		return err
@@ -289,8 +300,9 @@ func (d *Directory) UseOperatorRecovery(ctx context.Context, id uuid.UUID, hash 
 func (d *Directory) ResetOperatorMFA(ctx context.Context, id uuid.UUID, by string) error {
 	tag, err := d.pool.Exec(ctx, `UPDATE operator_accounts
 		SET totp_enabled = false, totp_secret_sealed = NULL, totp_last_step = 0, recovery_hashes = '{}',
-		    status = CASE WHEN status = 'active' THEN 'invited' ELSE status END
-		WHERE id = $1 AND status <> 'disabled'`, id)
+		    status = CASE WHEN status = 'active' THEN 'invited' ELSE status END,
+		    sessions_invalid_before = $2
+		WHERE id = $1 AND status <> 'disabled'`, id, time.Now().UTC())
 	if err != nil {
 		return err
 	}
@@ -325,7 +337,7 @@ func (d *Directory) SetOperatorStatus(ctx context.Context, id uuid.UUID, disable
 				return ErrLastOperator
 			}
 		}
-		if _, err := tx.Exec(ctx, `UPDATE operator_accounts SET status = 'disabled' WHERE id = $1`, id); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE operator_accounts SET status = 'disabled', sessions_invalid_before = $2 WHERE id = $1`, id, time.Now().UTC()); err != nil {
 			return err
 		}
 	} else {
@@ -382,4 +394,33 @@ func (d *Directory) OperatorEvents(ctx context.Context, limit int) ([]OperatorEv
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// IssueOperatorLink makes the one link an owner needs next and returns its
+// token, shown once and kept only as a hash. An owner with no authenticator
+// yet (a new one, or one whose second factor was reset) gets an invitation,
+// which sets a password and then the authenticator. An owner who has both gets
+// a reset, which changes the password and leaves the second factor alone: a
+// link in an inbox must never be a way round it.
+func (d *Directory) IssueOperatorLink(ctx context.Context, id uuid.UUID, by string, now time.Time) (token, purpose string, expires time.Time, err error) {
+	o, err := d.OperatorByID(ctx, id)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	if o.Status == "disabled" {
+		return "", "", time.Time{}, ErrNoSuchOperator
+	}
+	purpose, life := "invite", OperatorInviteLife
+	if o.TOTPEnabled && o.PasswordHash != "" {
+		purpose, life = "reset", OperatorResetLife
+	}
+	token, hash, err := localauth.NewToken()
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	expires = now.Add(life)
+	if err := d.IssueOperatorToken(ctx, id, purpose, hash, expires, now); err != nil {
+		return "", "", time.Time{}, err
+	}
+	return token, purpose, expires, d.OperatorEvent(ctx, by, "operator.link_issued", o.Email, purpose)
 }

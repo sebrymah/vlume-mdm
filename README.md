@@ -3022,6 +3022,62 @@ client secret that opens under the new master through the re-wrapped key.
 `--break-importcounts` commits a short bundle and `--break-importtenant`
 lets a row cross tenants; both are caught.
 
+## The owner's console
+
+The people who run the platform get their own console, on its own hostname
+(`MDM_OPERATOR_HOST`, `ops.mdm.vlumesec.com`), not a role inside a customer's.
+Unset, the routes do not exist. Set, the hostname is decided before the tenant
+router sees the request, so a customer's hostname never serves these pages and
+this one never serves a customer (`--break-opshost`).
+
+**What it shows** is what the operator's database role may read: every
+organisation as a shell (name, short name, hostnames, plan, status, region, when
+created), usage as counts (devices and admin seats in use against the cap,
+devices enrolled and commands in 30 days, the daily history), sign-ups, the
+plans and what each organisation has switched on. Never a device, a person or a
+policy. Counts that cannot be read show as "unknown", not zero
+(`--break-opsunknown`). The flags sit at 80 percent ("near") and 100 ("at the
+limit") of the device allowance (`--break-opsflag`).
+
+**Its own accounts** (0048), in tables the customer-facing role cannot read. An
+owner always has a password and an authenticator: the database refuses an
+active account without both, so no bug can leave one on a password alone.
+There is no reset by email. A first account is made on the machine:
+
+    fly ssh console -a vlume-mdm -C "tenantctl operator-add --name 'Tobi' tobi@example.com"
+
+which prints one link, once. Opening it chooses a password and goes straight to
+the authenticator (QR and key) and then shows ten recovery codes, once.
+`tenantctl operator-link <email>` makes a fresh link (an invitation if there is
+no authenticator yet, a password reset if there is: a reset never touches the
+second factor), `operator-reset-mfa` is for a lost phone, `operator-list`
+shows who exists. Only the newest link works (`--break-opsreplace`); a link
+works once (`--break-opsonce`); an invitation lasts a week, a reset an hour.
+
+**Signing in** is a password, then a code. A password alone gives no session
+(`--break-opsmfa`), and an account that has only been invited cannot sign in
+with a password someone else set (`--break-opsinvited`). Wrong answers lock the
+account for fifteen minutes after five (`--break-opslock`, `--break-opscount`);
+a time step is good once (`--break-opsstep`); every way to fail reads the same.
+The authenticator secret is sealed under the platform master key
+(`Keyring.SealMaster`), never stored as it is (`--break-opsseal`).
+
+**A session** is signed, carries a realm no organisation can have, a role
+no organisation can map to and a subject that begins `ops:`; each of the three
+is checked on its own (`--break-opsrealm`, `--break-opsrole`,
+`--break-opssubject`) and an organisation's session is nothing here and the
+reverse. The account is read on every request, so disabling an owner,
+resetting their authenticator or changing their password ends their sessions
+at the next click, and re-enabling does not bring an old one back
+(`--break-opsactive`, `--break-opsinvalid`). Cookies are Strict, HttpOnly and
+Secure; pages are `no-store`, never framed (`--break-opsframe`), with a
+policy that allows no outside script or form target.
+
+Every owner action that changes something is meant to be written to
+`operator_events`, which the role can add to and read but never change or
+remove. Today the console only reads and signs in and out; the actions
+(suspend, plan, quota, features, owners) come next.
+
 ## Known limits, stated rather than discovered
 
 **The rate limiter is shared** (0034). The bucket is a row per key in

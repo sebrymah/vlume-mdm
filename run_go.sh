@@ -1711,6 +1711,199 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	case d.ADBEnabled != nil || d.DevSettingsEnabled != nil:"
   ;;
 
+--break-opsrealm)
+  # An organisation's session, presented as an owner's, is believed.
+  echo "==> NEGATIVE CONTROL: the owner's console does not check the session's realm"
+  patch internal/gateway/ops.go \
+    "err != nil || sess.TenantID != opsRealm || sess.Role != opsRole" \
+    "err != nil || sess.Role != opsRole"
+  ;;
+
+--break-opsrole)
+  echo "==> NEGATIVE CONTROL: the owner's console does not check the session's role"
+  patch internal/gateway/ops.go \
+    "sess.TenantID != opsRealm || sess.Role != opsRole || !strings.HasPrefix(sess.Subject, opsMark)" \
+    "sess.TenantID != opsRealm || !strings.HasPrefix(sess.Subject, opsMark)"
+  ;;
+
+--break-opssubject)
+  echo "==> NEGATIVE CONTROL: the owner's console does not check the session's subject"
+  patch internal/gateway/ops.go \
+    "sess.Role != opsRole || !strings.HasPrefix(sess.Subject, opsMark)" \
+    "sess.Role != opsRole"
+  ;;
+
+--break-opsactive)
+  # An account that is no longer active keeps its session.
+  echo "==> NEGATIVE CONTROL: an owner's session does not check the account is active"
+  patch internal/gateway/ops.go \
+    "	if err != nil || op.Status != \"active\" || !op.TOTPEnabled {" \
+    "	if err != nil {"
+  ;;
+
+--break-opsinvalid)
+  # A disabled, reset or re-passworded account's old sessions come back.
+  echo "==> NEGATIVE CONTROL: an owner's old sessions are not ended by a disable or a reset"
+  patch internal/gateway/ops.go \
+    "	if op.SessionsInvalidBefore != nil && op.SessionsInvalidBefore.After(sess.StartedAt) {" \
+    "	if op.SessionsInvalidBefore != nil && op.SessionsInvalidBefore.After(sess.StartedAt) && false {"
+  ;;
+
+--break-opsinvited)
+  # A password set from a link, with no authenticator yet, is a sign-in.
+  echo "==> NEGATIVE CONTROL: an invited owner can sign in with a password alone"
+  patch internal/gateway/ops.go \
+    "	usable := found && op.Status == \"active\" && op.PasswordHash != \"\" && op.TOTPEnabled && !op.Locked(now)" \
+    "	usable := found && op.PasswordHash != \"\" && !op.Locked(now)"
+  ;;
+
+--break-opsmfa)
+  # The password alone starts a session.
+  echo "==> NEGATIVE CONTROL: an owner's password alone starts a session"
+  patch internal/gateway/ops.go \
+    "	if !g.opsPend(w, op.ID, \"verify\") {" \
+    "	if g.opsStart(w, r, op, nil); true {"
+  ;;
+
+--break-opsonce)
+  # A link is not used up.
+  echo "==> NEGATIVE CONTROL: an owner's link is not spent"
+  patch internal/gateway/ops.go \
+    "		id, err := g.dir.SpendOperatorToken(r.Context(), hash, purpose, now)" \
+    "		id, err := op.ID, error(nil)"
+  ;;
+
+--break-opsreplace)
+  # An older link keeps working after a newer one is made.
+  echo "==> NEGATIVE CONTROL: an older owner link survives a newer one"
+  patch internal/directory/operators.go \
+    "WHERE account_id = \$1 AND purpose = \$2 AND used_at IS NULL\`, id, purpose, now); err != nil {" \
+    "WHERE account_id = \$1 AND purpose = \$2 AND used_at IS NULL AND false\`, id, purpose, now); err != nil {"
+  ;;
+
+--break-opsstep)
+  # A second-factor code can be used twice.
+  echo "==> NEGATIVE CONTROL: an owner's code can be used more than once"
+  patch internal/gateway/ops.go \
+    "		good, err = g.dir.AcceptOperatorTOTPStep(r.Context(), op.ID, step)" \
+    "		good, err = true, error(nil); _ = step"
+  ;;
+
+--break-opslock)
+  # Any number of wrong answers.
+  echo "==> NEGATIVE CONTROL: an owner account never locks"
+  patch internal/directory/operators.go "OperatorLockAfter = 5" "OperatorLockAfter = 500"
+  ;;
+
+--break-opscount)
+  # Wrong passwords are not counted.
+  echo "==> NEGATIVE CONTROL: wrong owner passwords are not counted"
+  patch internal/gateway/ops.go \
+    "		if _, e := g.dir.RecordOperatorFailure(r.Context(), op.ID, now); e != nil {" \
+    "		if _, e := op.ID, error(nil); e != nil {"
+  ;;
+
+--break-opshost)
+  # The owner's pages answer on a customer's hostname.
+  echo "==> NEGATIVE CONTROL: the owner's console answers on other hostnames"
+  patch internal/gateway/gateway.go \
+    "		if ops != nil && hostIs(r.Host, g.operator.Host) {" \
+    "		if ops != nil && (hostIs(r.Host, g.operator.Host) || strings.HasPrefix(r.URL.Path, \"/orgs\")) {"
+  ;;
+
+--break-opsframe)
+  # The owner's pages can be framed.
+  echo "==> NEGATIVE CONTROL: the owner's pages can be framed"
+  patch internal/console/ops.go \
+    "	w.Header().Set(\"X-Frame-Options\", \"DENY\")" \
+    "	w.Header().Set(\"X-Frame-Options\", \"SAMEORIGIN\")"
+  ;;
+
+--break-opsseal)
+  # The authenticator secret is stored as it is.
+  echo "==> NEGATIVE CONTROL: an owner's authenticator secret is stored unsealed"
+  patch internal/gateway/ops.go \
+    "		sealed, e := g.keys.SealMaster(fresh)" \
+    "		sealed, e := append([]byte(nil), fresh...), error(nil)"
+  ;;
+
+--break-opsunknown)
+  # A customer whose usage cannot be read shows as zero.
+  echo "==> NEGATIVE CONTROL: unreadable usage is shown as zero"
+  patch internal/gateway/ops.go "		o.NoUsage = true" "		o.NoUsage = false"
+  ;;
+
+--break-opsflag)
+  echo "==> NEGATIVE CONTROL: the near-limit flag moves to 90 percent"
+  patch internal/gateway/ops.go \
+    "		case o.Devices*100 >= o.DeviceCap*80:" \
+    "		case o.Devices*100 >= o.DeviceCap*90:"
+  ;;
+
+--break-opscsrf)
+  # An owner's change goes through without the form token.
+  echo "==> NEGATIVE CONTROL: owner changes do not need the form token"
+  patch internal/gateway/ops_actions.go \
+    "		if !g.csrfMatches(r.PostFormValue(\"csrf\"), opsRealm, s.Sess.Subject, opsRole) {" \
+    "		if false && !g.csrfMatches(r.PostFormValue(\"csrf\"), opsRealm, s.Sess.Subject, opsRole) {"
+  ;;
+
+--break-opsorigin)
+  # An owner's change is accepted from another site.
+  echo "==> NEGATIVE CONTROL: owner changes are accepted from another site"
+  patch internal/gateway/ops_actions.go \
+    "		if !sameOrigin(r) {" \
+    "		if false && !sameOrigin(r) {"
+  ;;
+
+--break-opsconfirm)
+  # Suspending needs no typed short name.
+  echo "==> NEGATIVE CONTROL: suspending an organisation needs no typed confirmation"
+  patch internal/gateway/ops_actions.go \
+    "		if !strings.EqualFold(strings.TrimSpace(r.PostFormValue(\"confirm\")), t.Slug) {" \
+    "		if false && !strings.EqualFold(strings.TrimSpace(r.PostFormValue(\"confirm\")), t.Slug) {"
+  ;;
+
+--break-opsrecord)
+  # A change leaves no line in the record.
+  echo "==> NEGATIVE CONTROL: owner changes are not recorded"
+  patch internal/gateway/ops_actions.go \
+    "	if err := g.dir.OperatorEvent(r.Context(), s.Op.Email, action, target, detail); err != nil {" \
+    "	if err := error(nil); err != nil {"
+  ;;
+
+--break-opsbounds)
+  # An allowance can be zero, negative or absurd.
+  echo "==> NEGATIVE CONTROL: allowance numbers are not bounded"
+  patch internal/gateway/ops_actions.go \
+    "			return n, err == nil && n >= 1 && n <= max" \
+    "			return n, err == nil"
+  ;;
+
+--break-opsself)
+  # An owner can disable or reset their own account from the console.
+  echo "==> NEGATIVE CONTROL: an owner can act on their own account"
+  patch internal/gateway/ops_actions.go \
+    "		if o.ID == s.Op.ID && !self {" \
+    "		if o.ID == s.Op.ID && !self && false {"
+  ;;
+
+--break-opslastowner)
+  # The last active owner can be disabled.
+  echo "==> NEGATIVE CONTROL: the last active owner can be disabled"
+  patch internal/directory/operators.go \
+    "			if others == 0 {" \
+    "			if others == 0 && false {"
+  ;;
+
+--break-opsplanclear)
+  # Moving to a plan keeps the organisation's own switches.
+  echo "==> NEGATIVE CONTROL: a plan change keeps the old switches"
+  patch internal/directory/plans.go \
+    "		       features = '{}'::jsonb" \
+    "		       features = features"
+  ;;
+
 --break-localprotocol)
   # A password signs in at a tenant that has an identity provider, which
   # is a way round the provider's own controls, offboarding above all.
@@ -1770,6 +1963,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
   echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial"
+  echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

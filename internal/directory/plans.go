@@ -133,6 +133,27 @@ func (d *Directory) SetFeature(ctx context.Context, slug, name string, on bool) 
 	return nil
 }
 
+// ClearFeature removes a tenant's own switch, so the plan's answer applies again.
+func (d *Directory) ClearFeature(ctx context.Context, slug, name string) error {
+	known := false
+	for _, f := range Features() {
+		if f == name {
+			known = true
+		}
+	}
+	if !known {
+		return fmt.Errorf("directory: unknown feature %q (%s)", name, strings.Join(Features(), ", "))
+	}
+	tag, err := d.pool.Exec(ctx, `UPDATE tenants SET features = features - $2::text WHERE slug = $1`, slug, name)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNoSuchSlug
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------- metering
 
 // Usage is what a tenant has used: counts and bytes, nothing with a name

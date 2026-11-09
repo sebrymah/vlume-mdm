@@ -178,6 +178,8 @@ var reservedSlugs = map[string]bool{
 	"signin": true, "signup": true, "auth": true, "sso": true, "static": true,
 	"cdn": true, "console": true, "portal": true, "dashboard": true, "billing": true,
 	"security": true, "root": true, "mdm": true, "vlume": true, "vlumesec": true,
+	// The owner's console answers on one of these (0048).
+	"ops": true, "operator": true, "operators": true, "platform": true, "system": true, "owner": true,
 }
 
 func cleanHost(h string) (string, error) {

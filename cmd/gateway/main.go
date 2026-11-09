@@ -267,6 +267,12 @@ func main() {
 		}
 	}
 
+	// The platform owner's console: one hostname, off unless it is named.
+	var operatorCfg *gateway.OperatorConfig
+	if host := os.Getenv("MDM_OPERATOR_HOST"); host != "" {
+		operatorCfg = &gateway.OperatorConfig{Host: host}
+	}
+
 	var signup *gateway.SignupConfig
 	if host := os.Getenv("MDM_SIGNUP_HOST"); host != "" {
 		domain := must("MDM_SIGNUP_TENANT_DOMAIN")
@@ -364,7 +370,7 @@ func main() {
 				Fallback: command.AppleNotConfigured(),
 			}, command.DefaultLimiter()),
 		CSRFKey: keys.Claim, Log: log,
-		Signup: signup,
+		Signup: signup, Operator: operatorCfg,
 	})
 	// F8's fifteen minutes, for the devices Google reports on.
 	go gw.RunAndroidSync(ctx, dir.ActiveTenantIDs, 15*time.Minute)

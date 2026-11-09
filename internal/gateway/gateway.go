@@ -138,6 +138,9 @@ type Config struct {
 	// Signup, when set, serves self-service sign-up on its own hostname.
 	// Nil means there is no sign-up: the routes are absent, not refused.
 	Signup *SignupConfig
+	// Operator, when set, serves the platform owner's console on its own
+	// hostname (ops.go). Nil means there is none: the routes are absent.
+	Operator *OperatorConfig
 	// Mail carries one-off mail to a person: an enrolment invitation. The
 	// email channel in production, the log in the demonstration, nil where
 	// there is no mail server, in which case the console says so and shows
@@ -187,6 +190,8 @@ type Gateway struct {
 	insecureCookies     bool
 	allowPrivateBuckets bool
 	signup              *SignupConfig
+	operator            *OperatorConfig
+	opsCache            opsOrgCache
 	androidCallback     string
 	mail                notify.Channel
 	trustedProxies      []netip.Prefix
@@ -217,6 +222,7 @@ func New(cfg Config) *Gateway {
 		insecureCookies:     cfg.InsecureCookies,
 		allowPrivateBuckets: cfg.AllowPrivateBuckets,
 		signup:              cfg.Signup,
+		operator:            cfg.Operator,
 		androidCallback:     strings.TrimSuffix(cfg.AndroidCallbackBase, "/"),
 		mail:                cfg.Mail,
 		trustedProxies:      cfg.TrustedProxies,
@@ -678,12 +684,31 @@ func (g *Gateway) Handler() http.Handler {
 	// decided by hostname before anything else looks at the request. A
 	// tenant's hostname never serves /signup and the sign-up hostname never
 	// serves a tenant: the two surfaces share a process and nothing else.
-	if g.signup == nil {
+	//
+	// The owner's console is decided the same way and for the same reason,
+	// and only when it is turned on and there is a key to seal its second
+	// factors under.
+	var ops http.Handler
+	if g.operator != nil {
+		if g.keys == nil || g.sessions == nil {
+			g.log.Error("the owner's console is configured but there is no sealing keyring or session signer: it is not served")
+		} else {
+			ops = g.opsHandler()
+		}
+	}
+	if g.signup == nil && ops == nil {
 		return outer
 	}
-	signup := g.signupHandler()
+	var signup http.Handler
+	if g.signup != nil {
+		signup = g.signupHandler()
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if g.signup.servesHost(r.Host) {
+		if ops != nil && hostIs(r.Host, g.operator.Host) {
+			ops.ServeHTTP(w, r)
+			return
+		}
+		if signup != nil && g.signup.servesHost(r.Host) {
 			signup.ServeHTTP(w, r)
 			return
 		}

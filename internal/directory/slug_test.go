@@ -7,7 +7,7 @@ import (
 
 // A customer cannot take a name the operator's own hostnames use.
 func TestAReservedNameCannotBeACustomersShortName(t *testing.T) {
-	for _, s := range []string{"app", "www", "admin", "  App  ", "LOGIN", "mdm"} {
+	for _, s := range []string{"app", "www", "admin", "  App  ", "LOGIN", "mdm", "ops", "Operator", "platform", "system", "owner"} {
 		if _, err := cleanSlug(s); !errors.Is(err, ErrSlugTaken) {
 			t.Errorf("%q was allowed as a short name (err %v)", s, err)
 		}

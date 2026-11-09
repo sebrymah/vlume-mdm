@@ -500,10 +500,15 @@ func TestTheOwnersPagesShowOrganisationsAsCountsAndNeverWhatIsInsideThem(t *test
 		}
 	}
 	// The filters.
-	if _, body := read(b, opsSite+"/orgs?q="+url.QueryEscape(orgs[0].Slug)); !strings.Contains(body, orgs[0].Name) || strings.Contains(body, orgs[1].Name) {
-		t.Error("the search did not narrow the list")
+	// The two fixture organisations, by id: other tests leave organisations
+	// behind, and which two come first is not the point.
+	slugA := adminString(t, `SELECT slug FROM tenants WHERE id = $1`, tenantA)
+	nameA := adminString(t, `SELECT name FROM tenants WHERE id = $1`, tenantA)
+	nameB := adminString(t, `SELECT name FROM tenants WHERE id = $1`, tenantB)
+	if _, body := read(b, opsSite+"/orgs?q="+url.QueryEscape(slugA)); !strings.Contains(body, nameA) || strings.Contains(body, nameB) {
+		t.Errorf("the search for %q did not narrow the list (%q, %q)", slugA, nameA, nameB)
 	}
-	if _, body := read(b, opsSite+"/orgs?status=suspended"); strings.Contains(body, orgs[0].Name) {
+	if _, body := read(b, opsSite+"/orgs?status=suspended"); strings.Contains(body, nameA) {
 		t.Error("the suspended filter listed an active organisation")
 	}
 	if resp, _ := read(b, opsSite+"/orgs/no-such-organisation"); resp.StatusCode != 404 {
@@ -657,5 +662,124 @@ func TestUsageThatCannotBeReadIsUnknownAndTheFlagsSitAtEightyAndAHundred(t *test
 		if o.Flag != c.flag || o.Percent != c.percent || o.NoUsage {
 			t.Errorf("%d of %d: flag %q percent %d", c.devices, c.cap, o.Flag, o.Percent)
 		}
+	}
+}
+
+// A link made for one state of an account must not survive into another. The
+// case that matters: a password-reset link, made while the owner still had an
+// authenticator, used after the authenticator was reset, would let whoever
+// holds it choose the new one.
+func TestALinkMadeBeforeAnAuthenticatorResetCannotChooseTheNewAuthenticator(t *testing.T) {
+	f := newOpsFixture(t)
+	ctx := context.Background()
+	id, _, _ := f.onboard(t, f.browser(t), "one@example.com")
+	stale, purpose, _, err := f.g.dir.IssueOperatorLink(ctx, id, "test", time.Now().UTC())
+	if err != nil || purpose != "reset" {
+		t.Fatalf("%v %q", err, purpose)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := f.g.dir.ResetOperatorMFA(ctx, id, "test"); err != nil {
+		t.Fatal(err)
+	}
+	before := adminString(t, `SELECT password_hash FROM operator_accounts WHERE id = $1`, id)
+
+	b := f.browser(t)
+	if resp, _ := read(b, opsSite+"/reset/"+stale); resp.StatusCode != http.StatusGone {
+		t.Fatalf("a link from before the reset still opens (%d)", resp.StatusCode)
+	}
+	resp, page := b.postForm(opsSite+"/reset/"+stale, url.Values{"password": {"a-fresh-long-passphrase-8"}, "confirm": {"a-fresh-long-passphrase-8"}})
+	if resp.StatusCode != http.StatusGone || strings.Contains(page, "Set up your authenticator") {
+		t.Fatalf("a link from before the reset led to choosing an authenticator (%d): %.300s", resp.StatusCode, page)
+	}
+	if adminString(t, `SELECT password_hash FROM operator_accounts WHERE id = $1`, id) != before {
+		t.Fatal("the password was changed by a link from before the reset")
+	}
+	if opsCookieOf(b, opsPending) != "" {
+		t.Fatal("a pending cookie was set")
+	}
+
+	// Even a reset link made now, for an account with no authenticator, fits
+	// nothing: only an invitation sets one up.
+	tok, hash, _ := localauth.NewToken()
+	if err := f.g.dir.IssueOperatorToken(ctx, id, "reset", hash, time.Now().Add(time.Hour), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ := read(b, opsSite+"/reset/"+tok); resp.StatusCode != http.StatusGone {
+		t.Fatalf("a reset link for an owner with no authenticator opens (%d)", resp.StatusCode)
+	}
+	// And the reverse: an invitation for an owner who has one.
+	active, _, _ := f.onboard(t, f.browser(t), "two@example.com")
+	tok2, hash2, _ := localauth.NewToken()
+	if err := f.g.dir.IssueOperatorToken(ctx, active, "invite", hash2, time.Now().Add(time.Hour), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ := read(b, opsSite+"/accept/"+tok2); resp.StatusCode != http.StatusGone {
+		t.Fatalf("an invitation for an owner who has an authenticator opens (%d)", resp.StatusCode)
+	}
+}
+
+func TestDisablingOrResettingOrChangingAPasswordEndsEveryLinkOutstanding(t *testing.T) {
+	f := newOpsFixture(t)
+	ctx := context.Background()
+	f.onboard(t, f.browser(t), "keep@example.com")
+	id, _, _ := f.onboard(t, f.browser(t), "two@example.com")
+
+	open := func() bool {
+		var n int
+		return adminCount(t, `SELECT count(*) FROM operator_tokens WHERE account_id = $1 AND used_at IS NULL`, id) > n
+	}
+	issue := func(purpose string) {
+		_, hash, _ := localauth.NewToken()
+		if err := f.g.dir.IssueOperatorToken(ctx, id, purpose, hash, time.Now().Add(time.Hour), time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A new link replaces one made for a different purpose.
+	issue("reset")
+	issue("invite")
+	if n := adminCount(t, `SELECT count(*) FROM operator_tokens WHERE account_id = $1 AND used_at IS NULL`, id); n != 1 {
+		t.Fatalf("%d links open after two were made for different purposes, want 1", n)
+	}
+	if err := f.g.dir.SetOperatorStatus(ctx, id, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if open() {
+		t.Fatal("disabling an owner left a link open")
+	}
+	f.g.dir.SetOperatorStatus(ctx, id, false, "test")
+	issue("reset")
+	if err := f.g.dir.ResetOperatorMFA(ctx, id, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if open() {
+		t.Fatal("resetting an authenticator left a link open")
+	}
+	issue("invite")
+	if err := f.g.dir.SetOperatorPassword(ctx, id, passwordHash(t), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if open() {
+		t.Fatal("changing a password left a link open")
+	}
+}
+
+// A half-finished sign-in that began before the account was reset is not to
+// be finished.
+func TestAHalfFinishedSignInDoesNotSurviveAnAuthenticatorReset(t *testing.T) {
+	f := newOpsFixture(t)
+	ctx := context.Background()
+	o, _ := f.g.dir.CreateOperator(ctx, "a@example.com", "A", "test")
+	token, _, _, _ := f.g.dir.IssueOperatorLink(ctx, o.ID, "test", time.Now().UTC())
+	b := f.browser(t)
+	_, page := b.postForm(opsSite+"/accept/"+token, url.Values{"password": {localPassword}, "confirm": {localPassword}})
+	if !strings.Contains(page, "Set up your authenticator") {
+		t.Fatalf("no enrolment page: %.200s", page)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := f.g.dir.ResetOperatorMFA(ctx, o.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, body := read(b, opsSite+"/signin/enrol"); strings.Contains(body, "Set up your authenticator") {
+		t.Fatal("an enrolment begun before a reset carried on after it")
 	}
 }

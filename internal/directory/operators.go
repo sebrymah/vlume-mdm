@@ -146,8 +146,9 @@ func (d *Directory) IssueOperatorToken(ctx context.Context, id uuid.UUID, purpos
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `UPDATE operator_tokens SET used_at = $3
-		WHERE account_id = $1 AND purpose = $2 AND used_at IS NULL`, id, purpose, now); err != nil {
+	// Every unused link of this account ends, whatever it was for: a link made
+	// earlier, for a state the account is no longer in, must not outlive it.
+	if err := revokeOperatorLinks(ctx, tx, id, now); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO operator_tokens (account_id, purpose, token_hash, expires_at)
@@ -155,6 +156,12 @@ func (d *Directory) IssueOperatorToken(ctx context.Context, id uuid.UUID, purpos
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// revokeOperatorLinks ends every link of an account that has not been used.
+func revokeOperatorLinks(ctx context.Context, tx pgx.Tx, id uuid.UUID, now time.Time) error {
+	_, err := tx.Exec(ctx, `UPDATE operator_tokens SET used_at = $2 WHERE account_id = $1 AND used_at IS NULL`, id, now)
+	return err
 }
 
 // PeekOperatorToken finds whom a link is for without spending it.
@@ -191,7 +198,12 @@ func (d *Directory) SpendOperatorToken(ctx context.Context, hash []byte, purpose
 // SetOperatorPassword sets a password and clears a lock. An invited account
 // stays invited: it becomes active only when its second factor is enrolled.
 func (d *Directory) SetOperatorPassword(ctx context.Context, id uuid.UUID, hash string, now time.Time) error {
-	tag, err := d.pool.Exec(ctx, `UPDATE operator_accounts
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `UPDATE operator_accounts
 		SET password_hash = $2, password_set_at = $3, sessions_invalid_before = $3, failed_count = 0, locked_until = NULL
 		WHERE id = $1 AND status <> 'disabled'`, id, hash, now)
 	if err != nil {
@@ -200,7 +212,11 @@ func (d *Directory) SetOperatorPassword(ctx context.Context, id uuid.UUID, hash 
 	if tag.RowsAffected() == 0 {
 		return ErrNoSuchOperator
 	}
-	return nil
+	// Any other link still out there is for a password that no longer exists.
+	if perr := revokeOperatorLinks(ctx, tx, id, now); perr != nil {
+		return perr
+	}
+	return tx.Commit(ctx)
 }
 
 // RecordOperatorFailure counts a wrong answer and, at the fifth, locks the
@@ -298,16 +314,31 @@ func (d *Directory) UseOperatorRecovery(ctx context.Context, id uuid.UUID, hash 
 // ResetOperatorMFA removes the second factor, so the account has to enrol
 // again. It goes back to invited, because an active account must have one.
 func (d *Directory) ResetOperatorMFA(ctx context.Context, id uuid.UUID, by string) error {
-	tag, err := d.pool.Exec(ctx, `UPDATE operator_accounts
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	now := time.Now().UTC()
+	tag, err := tx.Exec(ctx, `UPDATE operator_accounts
 		SET totp_enabled = false, totp_secret_sealed = NULL, totp_last_step = 0, recovery_hashes = '{}',
 		    status = CASE WHEN status = 'active' THEN 'invited' ELSE status END,
 		    sessions_invalid_before = $2
-		WHERE id = $1 AND status <> 'disabled'`, id, time.Now().UTC())
+		WHERE id = $1 AND status <> 'disabled'`, id, now)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNoSuchOperator
+	}
+	// A link made before the reset, a password reset above all, would now be a
+	// way to set up an authenticator of someone else's choosing. Only a link
+	// made after this moment, by an owner, leads there.
+	if rerr := revokeOperatorLinks(ctx, tx, id, now); rerr != nil {
+		return rerr
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	return d.OperatorEvent(ctx, by, "operator.mfa_reset", id.String(), "")
 }
@@ -337,8 +368,12 @@ func (d *Directory) SetOperatorStatus(ctx context.Context, id uuid.UUID, disable
 				return ErrLastOperator
 			}
 		}
-		if _, err := tx.Exec(ctx, `UPDATE operator_accounts SET status = 'disabled', sessions_invalid_before = $2 WHERE id = $1`, id, time.Now().UTC()); err != nil {
+		now := time.Now().UTC()
+		if _, err := tx.Exec(ctx, `UPDATE operator_accounts SET status = 'disabled', sessions_invalid_before = $2 WHERE id = $1`, id, now); err != nil {
 			return err
+		}
+		if derr := revokeOperatorLinks(ctx, tx, id, now); derr != nil {
+			return derr
 		}
 	} else {
 		// Re-enabled, it is as it was: active if it has both factors, otherwise

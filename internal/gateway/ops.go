@@ -282,28 +282,28 @@ func (g *Gateway) opsPend(w http.ResponseWriter, id uuid.UUID, purpose string) b
 	return true
 }
 
-func (g *Gateway) opsPendingFrom(r *http.Request) (id uuid.UUID, purpose string, ok bool) {
+func (g *Gateway) opsPendingFrom(r *http.Request) (id uuid.UUID, purpose string, started time.Time, ok bool) {
 	ck, err := r.Cookie(opsPending)
 	if err != nil || ck.Value == "" || g.sessions == nil {
-		return uuid.Nil, "", false
+		return uuid.Nil, "", time.Time{}, false
 	}
 	flow, err := g.sessions.VerifyFlow(ck.Value)
 	if err != nil || flow.TenantID != opsRealm || !strings.HasPrefix(flow.State, opsMark) {
-		return uuid.Nil, "", false
+		return uuid.Nil, "", time.Time{}, false
 	}
 	purpose, idText, found := strings.Cut(strings.TrimPrefix(flow.State, opsMark), ":")
 	if !found || (purpose != "verify" && purpose != "enrol") {
-		return uuid.Nil, "", false
+		return uuid.Nil, "", time.Time{}, false
 	}
 	id, err = uuid.Parse(idText)
 	if err != nil {
-		return uuid.Nil, "", false
+		return uuid.Nil, "", time.Time{}, false
 	}
-	return id, purpose, true
+	return id, purpose, flow.ExpiresAt.Add(-session.FlowLifetime), true
 }
 
 func (g *Gateway) opsMFA(w http.ResponseWriter, r *http.Request) {
-	id, purpose, ok := g.opsPendingFrom(r)
+	id, purpose, started, ok := g.opsPendingFrom(r)
 	if !ok || purpose != "verify" {
 		http.Redirect(w, r, "/signin", http.StatusSeeOther)
 		return
@@ -329,7 +329,7 @@ func (g *Gateway) opsMFA(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	op, err := g.dir.OperatorByID(r.Context(), id)
-	if err != nil || op.Status != "active" || !op.TOTPEnabled || op.Locked(now) || len(op.TOTPSealed) == 0 {
+	if err != nil || op.Status != "active" || !op.TOTPEnabled || op.Locked(now) || len(op.TOTPSealed) == 0 || opsPendingStale(op, started) {
 		g.clearOpsCookie(w, opsPending)
 		g.opsFail(w, "")
 		return
@@ -365,10 +365,27 @@ func (g *Gateway) opsMFA(w http.ResponseWriter, r *http.Request) {
 	g.opsStart(w, r, op, nil)
 }
 
+// opsPendingStale says a half-finished sign-in began before the account was
+// disabled, reset or given a new password, and so is not to be finished.
+func opsPendingStale(op directory.Operator, started time.Time) bool {
+	return op.SessionsInvalidBefore != nil && op.SessionsInvalidBefore.After(started)
+}
+
+// opsLinkFits says a link is for the state the account is in now. An
+// invitation sets up an authenticator, so it fits only an account without one;
+// a reset changes a password and fits only an account that has one. A reset
+// link must never be a way to choose an authenticator.
+func opsLinkFits(purpose string, op directory.Operator) bool {
+	if purpose == "reset" {
+		return op.TOTPEnabled
+	}
+	return !op.TOTPEnabled
+}
+
 // opsEnrol sets the second factor up. It is reached only from a link, which
 // is what proves who is doing it.
 func (g *Gateway) opsEnrol(w http.ResponseWriter, r *http.Request) {
-	id, purpose, ok := g.opsPendingFrom(r)
+	id, purpose, started, ok := g.opsPendingFrom(r)
 	if !ok || purpose != "enrol" {
 		http.Redirect(w, r, "/signin", http.StatusSeeOther)
 		return
@@ -384,7 +401,7 @@ func (g *Gateway) opsEnrol(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	op, err := g.dir.OperatorByID(r.Context(), id)
-	if err != nil || op.Status == "disabled" || op.TOTPEnabled || op.PasswordHash == "" || op.Locked(now) || g.keys == nil {
+	if err != nil || op.Status == "disabled" || op.TOTPEnabled || op.PasswordHash == "" || op.Locked(now) || g.keys == nil || opsPendingStale(op, started) {
 		g.clearOpsCookie(w, opsPending)
 		g.opsFail(w, "")
 		return
@@ -525,7 +542,7 @@ func (g *Gateway) opsLinkPage(purpose string) http.HandlerFunc {
 				found = false
 			}
 		}
-		if !found {
+		if !found || !opsLinkFits(purpose, op) {
 			console.RenderOps(w, http.StatusGone, console.OpsView{Page: "ops_closed", Title: "That link has expired",
 				Said: "It was already used, or it ran out. Ask another owner for a new one."})
 			return
@@ -566,7 +583,7 @@ func (g *Gateway) opsSetPassword(purpose string) http.HandlerFunc {
 		gone := func(said string) {
 			console.RenderOps(w, http.StatusGone, console.OpsView{Page: "ops_closed", Title: "That link has expired", Said: said})
 		}
-		if !found {
+		if !found || !opsLinkFits(purpose, op) {
 			gone("It was already used, or it ran out. Ask another owner for a new one.")
 			return
 		}

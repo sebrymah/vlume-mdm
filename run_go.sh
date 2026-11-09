@@ -1767,18 +1767,60 @@ GRANT SELECT ON devices TO mdm_operator;"
 
 --break-opsonce)
   # A link is not used up.
+  # Two layers end a used link: the spend, and the revoke that follows a new
+  # password. Both are taken out, because either alone is covered by the other.
   echo "==> NEGATIVE CONTROL: an owner's link is not spent"
   patch internal/gateway/ops.go \
     "		id, err := g.dir.SpendOperatorToken(r.Context(), hash, purpose, now)" \
     "		id, err := op.ID, error(nil)"
+  patch internal/directory/operators.go \
+    "	if perr := revokeOperatorLinks(ctx, tx, id, now); perr != nil {" \
+    "	if perr := error(nil); perr != nil {"
   ;;
 
 --break-opsreplace)
-  # An older link keeps working after a newer one is made.
-  echo "==> NEGATIVE CONTROL: an older owner link survives a newer one"
+  # No link is ever ended by a newer one, a reset, a disable or a password.
+  echo "==> NEGATIVE CONTROL: owner links are never revoked"
   patch internal/directory/operators.go \
-    "WHERE account_id = \$1 AND purpose = \$2 AND used_at IS NULL\`, id, purpose, now); err != nil {" \
-    "WHERE account_id = \$1 AND purpose = \$2 AND used_at IS NULL AND false\`, id, purpose, now); err != nil {"
+    "WHERE account_id = \$1 AND used_at IS NULL\`, id, now)" \
+    "WHERE account_id = \$1 AND used_at IS NULL AND false\`, id, now)"
+  ;;
+
+--break-opsresetrevoke)
+  # A reset of the authenticator leaves earlier links open.
+  echo "==> NEGATIVE CONTROL: resetting an authenticator leaves earlier links open"
+  patch internal/directory/operators.go \
+    "	if rerr := revokeOperatorLinks(ctx, tx, id, now); rerr != nil {" \
+    "	if rerr := error(nil); rerr != nil {"
+  ;;
+
+--break-opsdisablerevoke)
+  echo "==> NEGATIVE CONTROL: disabling an owner leaves their links open"
+  patch internal/directory/operators.go \
+    "		if derr := revokeOperatorLinks(ctx, tx, id, now); derr != nil {" \
+    "		if derr := error(nil); derr != nil {"
+  ;;
+
+--break-opspwrevoke)
+  echo "==> NEGATIVE CONTROL: a new password leaves other links open"
+  patch internal/directory/operators.go \
+    "	if perr := revokeOperatorLinks(ctx, tx, id, now); perr != nil {" \
+    "	if perr := error(nil); perr != nil {"
+  ;;
+
+--break-opslinkfits)
+  # A reset link is accepted for an account that has no authenticator.
+  echo "==> NEGATIVE CONTROL: a reset link fits an account with no authenticator"
+  patch internal/gateway/ops.go \
+    "		return op.TOTPEnabled" \
+    "		return true"
+  ;;
+
+--break-opspendstale)
+  echo "==> NEGATIVE CONTROL: a half-finished sign-in survives a reset"
+  patch internal/gateway/ops.go \
+    "	return op.SessionsInvalidBefore != nil && op.SessionsInvalidBefore.After(started)" \
+    "	return false && op.SessionsInvalidBefore != nil && op.SessionsInvalidBefore.After(started)"
   ;;
 
 --break-opsstep)
@@ -1963,7 +2005,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
   echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial"
-  echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear"
+  echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear --break-opsresetrevoke --break-opsdisablerevoke --break-opspwrevoke --break-opslinkfits --break-opspendstale"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
   ;;

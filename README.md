@@ -241,6 +241,8 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-panelscope      # let the side panel answer for a missing device, expect a FAILURE
 ./run_go.sh --break-homecalm        # make Home always say all is calm, expect a FAILURE
 ./run_go.sh --break-homequeue       # tell every role about the approvals queue, expect a FAILURE
+./run_go.sh --break-reach           # make the policy builder count every system's devices, expect a FAILURE
+./run_go.sh --break-statuspill      # colour a joined invite like a waiting one, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -2506,9 +2508,23 @@ off.
   endpoint. The name guards against slips, not against someone who may already
   do this. Removing only work data never asks for it.
 
+- **The policy builder** keeps every field name it always had and adds three
+  things around them: settings are switches, the sections are tabs when the
+  script runs (all on the page when it does not), and a side column says in
+  plain words what the policy does as it is edited and how many enrolled
+  devices of that system it would reach (`--break-reach`). The count is
+  measured at the page, not guessed.
+- **Add devices** is the old Enrolments page with a front door: Android is sent
+  to its own page, where the join link, code and QR live (they carry a second
+  factor, so they were not merged); computers and Apple devices use the one-time
+  link. The page that shows the link now watches for the device with
+  `GET /enrolments/recent`, a fragment that shows what an invite is for and
+  where it got to, never the link or token (`--break-statuspill`).
+
 What is not here yet from the canvas: the 14-day per-device health strip (only
-fleet-wide history is kept), the Command K search, the live "waiting for
-phones" list, the "remind the owner" button and the setup checklist on Home.
+fleet-wide history is kept), the Command K search, the "remind the owner"
+button, the setup checklist on Home, the "would not pass today" preview in the
+policy builder, and one shared link-and-QR page for every platform.
 
 ## Reports
 

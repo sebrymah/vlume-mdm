@@ -1820,6 +1820,24 @@ GRANT SELECT ON devices TO mdm_operator;"
 				held, err := command.List"
   ;;
 
+--break-reach)
+  # The builder counts devices of every system, not just the policy's own.
+  echo "==> NEGATIVE CONTROL: the policy builder counts every system's devices"
+  patch internal/console/policyform.go \
+    "if d.State == \"retired\" || !strings.EqualFold(d.OSFamily, os) {" \
+    "if d.State == \"retired\" {"
+  ;;
+
+--break-statuspill)
+  # A joined invite looks like one that is still waiting.
+  echo "==> NEGATIVE CONTROL: a joined invite is coloured like a waiting one"
+  patch internal/console/console.go \
+    "	case \"enrolled\":
+		return \"ok\"" \
+    "	case \"enrolled\":
+		return \"info\""
+  ;;
+
 --break-opsrealm)
   # An organisation's session, presented as an owner's, is believed.
   echo "==> NEGATIVE CONTROL: the owner's console does not check the session's realm"
@@ -2113,7 +2131,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifioff --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi --break-wipename --break-filterwiden --break-panelscope --break-homecalm --break-homequeue"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifioff --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi --break-wipename --break-filterwiden --break-panelscope --break-homecalm --break-homequeue --break-reach --break-statuspill"
   echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear --break-opsresetrevoke --break-opsdisablerevoke --break-opspwrevoke --break-opslinkfits --break-opspendstale"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2

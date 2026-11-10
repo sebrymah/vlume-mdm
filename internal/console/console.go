@@ -37,6 +37,7 @@ import (
 var files embed.FS
 
 var tmpl = template.Must(template.New("").Funcs(template.FuncMap{
+	"statusPill": statusPill,
 	"pct": func(n, total int) int {
 		if total == 0 {
 			return 0
@@ -553,6 +554,42 @@ func (c *Console) Enrolments(w http.ResponseWriter, r *http.Request, s Session) 
 		})
 }
 
+// statusPill is the colour of an invite's status. Joined is the only green:
+// "waiting" is blue because nothing is wrong yet and nothing is done.
+func statusPill(status string) string {
+	switch status {
+	case "enrolled":
+		return "ok"
+	case "revoked":
+		return "mute"
+	case "expired":
+		return "warn"
+	}
+	return "info"
+}
+
+// EnrolmentsRecent is the small list the "add devices" page refreshes while a
+// person waits for a device to join. It is a fragment and read-only, and it
+// shows no token and no link: only what the invite is for and where it got to.
+func (c *Console) EnrolmentsRecent(w http.ResponseWriter, r *http.Request, s Session) {
+	var p page
+	err := c.store.WithTenant(r.Context(), s.Claim, func(ctx context.Context, tx *data.Tx) error {
+		es, err := enrol.List(ctx, tx, 8)
+		p.Enrolments = es
+		return err
+	})
+	if err != nil {
+		http.Error(w, "could not render the page", http.StatusInternalServerError)
+		return
+	}
+	p.Now = time.Now().UTC()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := tmpl.ExecuteTemplate(w, "enrolments_recent.html", p); err != nil {
+		http.Error(w, "could not render the page", http.StatusInternalServerError)
+	}
+}
+
 // EnrolmentCreated is the one page that shows a token, once.
 // agentCommand is what to type on the computer. The token goes in on standard
 // input, not on the command line, because a command line is visible to every
@@ -573,7 +610,7 @@ func (c *Console) EnrolmentCreated(w http.ResponseWriter, r *http.Request, s Ses
 			p.NewToken = token
 			p.NewLink = link
 			p.NewCommand = agentCommand(link, token)
-			es, err := enrol.List(ctx, tx, 100)
+			es, err := enrol.List(ctx, tx, 8)
 			if err != nil {
 				return err
 			}
@@ -672,6 +709,15 @@ func (c *Console) Policies(w http.ResponseWriter, r *http.Request, s Session) {
 				}
 			case q.Get("new") == "android" || q.Get("new") == "windows":
 				p.Form = BuildPolicyForm(q.Get("new"), "", policy.Scope{OSFamily: q.Get("new")}, nil, policy.Settings{}, "", false)
+			}
+			// How many devices the policy being written would reach, so the
+			// builder can say so before anything is saved.
+			if p.Form != nil {
+				ds, err := data.ListDevices(ctx, tx)
+				if err != nil {
+					return err
+				}
+				p.Form.Reach = ReachOf(ds, p.Form.OS)
 			}
 			return nil
 		})

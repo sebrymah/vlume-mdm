@@ -16,99 +16,187 @@
   </div>
 
   {{if .Form}}
-  <form method="post" action="/policies" class="card" style="margin-bottom:20px">
+  <form method="post" action="/policies" id="builder" data-os-name="{{.Form.OSName}}"
+        data-reach-any="{{.Form.Reach.Any}}" data-reach-company="{{.Form.Reach.Company}}" data-reach-personal="{{.Form.Reach.Personal}}">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="guided" value="1">
     <input type="hidden" name="os_family" value="{{.Form.OS}}">
-    <p class="k">{{if .Form.Editing}}Change{{else}}New{{end}} {{.Form.OSName}} policy</p>
-    {{if .Form.Why}}<p class="sub" style="margin:4px 0 10px">{{.Form.Why}}</p>{{end}}
-    {{if .Form.Note}}<div class="warnbar"><p>{{.Form.Note}}</p></div>{{end}}
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:10px 0">
-      <label style="flex:2 1 240px">
-        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Name</span>
-        <input name="name" required value="{{.Form.Name}}" {{if .Form.Editing}}readonly{{end}} placeholder="{{.Form.OSName}} baseline"
-               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
-      </label>
-      <label style="flex:1 1 200px">
-        <span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Owned by</span>
-        <select name="ownership" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
-          <option value="" {{if eq .Form.Ownership ""}}selected{{end}}>Any {{.Form.OSName}} device</option>
-          <option value="company" {{if eq .Form.Ownership "company"}}selected{{end}}>Company-owned only</option>
-          <option value="personal" {{if eq .Form.Ownership "personal"}}selected{{end}}>Personal only</option>
-        </select>
-      </label>
-    </div>
-    <p class="sub" style="font-size:12.5px;margin:0">Leave a setting empty or unticked and the policy says nothing about it. When several policies apply to a device, the strictest value of each setting wins.</p>
+    <div class="bld">
+      <div class="bld-main">
+        <div class="card" style="margin-bottom:16px">
+          <h2 class="sect">{{if .Form.Editing}}Change{{else}}New{{end}} {{.Form.OSName}} policy</h2>
+          {{if .Form.Why}}<p class="sub" style="margin:0 0 10px">{{.Form.Why}}</p>{{end}}
+          {{if .Form.Note}}<div class="warnbar"><p>{{.Form.Note}}</p></div>{{end}}
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin:6px 0 10px">
+            <label style="flex:2 1 240px">
+              <span class="lab">Name</span>
+              <input class="inp" name="name" required value="{{.Form.Name}}" {{if .Form.Editing}}readonly{{end}} placeholder="{{.Form.OSName}} baseline">
+            </label>
+            <label style="flex:1 1 200px">
+              <span class="lab">Applies to</span>
+              <select class="inp" name="ownership" id="owner-sel">
+                <option value="" {{if eq .Form.Ownership ""}}selected{{end}}>Any {{.Form.OSName}} device</option>
+                <option value="company" {{if eq .Form.Ownership "company"}}selected{{end}}>Company-owned only</option>
+                <option value="personal" {{if eq .Form.Ownership "personal"}}selected{{end}}>Personal only</option>
+              </select>
+            </label>
+          </div>
+          <p class="sub" style="font-size:12.5px;margin:0">Leave a setting off or empty and the policy says nothing about it. When several policies apply to a device, the strictest value of each setting wins, so a looser policy can never weaken a stricter one.</p>
+        </div>
 
-      {{range .Form.Sections}}
-      <h2 style="margin:18px 0 8px;font-size:15px">{{.Name}}</h2>
-      {{range .Fields}}
-      <div style="padding:9px 0;border-top:1px solid var(--line)">
-        {{if eq .Kind "bool"}}
-        <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="{{.Input}}" value="1" {{if .Checked}}checked{{end}} style="margin-top:3px">
-          <span><strong style="font-weight:600">{{.Label}}</strong>{{if .Badge}} <span style="font-size:11px;color:var(--warn)">({{.Badge}})</span>{{end}}
-          {{if .Help}}<br><span class="sub" style="font-size:12.5px">{{.Help}}</span>{{end}}</span></label>
-        {{else}}
-        <label style="display:block">
-          <span style="display:block;margin-bottom:4px"><strong style="font-weight:600">{{.Label}}</strong>{{if .Badge}} <span style="font-size:11px;color:var(--warn)">({{.Badge}})</span>{{end}}</span>
-          {{if .Help}}<span class="sub" style="display:block;font-size:12.5px;margin-bottom:5px">{{.Help}}</span>{{end}}
-          {{if eq .Kind "int"}}
-          <span style="display:flex;gap:8px;align-items:center"><input name="{{.Input}}" type="number" min="{{.Min}}" max="{{.Max}}" value="{{.Value}}" placeholder="not set"
-            style="width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit"><span class="sub" style="font-size:12.5px">{{.Unit}} ({{.Min}} to {{.Max}})</span></span>
-          {{else if eq .Kind "choice"}}
-          <select name="{{.Input}}" style="width:100%;max-width:460px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
-            <option value="">Not set (leave it to the device)</option>
-            {{$v := .Value}}{{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Label}}</option>{{end}}
-          </select>
-          {{else if eq .Kind "text"}}
-          <input name="{{.Input}}" value="{{.Value}}" maxlength="300" placeholder="not set"
-            style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">
-          {{else if eq .Kind "list"}}
-          <textarea name="{{.Input}}" rows="3" spellcheck="false" placeholder="one per line"
-            style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px">{{.Value}}</textarea>
-          {{else if eq .Kind "apps"}}
-          <textarea name="{{.Input}}" rows="5" spellcheck="false" placeholder="com.example.crm required&#10;com.example.news available&#10;com.example.game blocked"
-            style="width:100%;max-width:560px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px">{{.Value}}</textarea>
+        <div class="card" style="margin-bottom:16px">
+          <div class="chips" id="sec-tabs" role="tablist" aria-label="Sections" hidden></div>
+          {{range .Form.Sections}}
+          <section class="bsec" data-section="{{.Name}}">
+            <h3 class="sect" style="margin-top:14px">{{.Name}}</h3>
+            {{range .Fields}}
+            <div class="fld" data-label="{{.Label}}" data-kind="{{.Kind}}" data-unit="{{.Unit}}">
+              {{if eq .Kind "bool"}}
+              <label class="swrow"><span class="tx"><strong>{{.Label}}</strong>{{if .Badge}} <span class="bdg">{{.Badge}}</span>{{end}}{{if .Help}}<small>{{.Help}}</small>{{end}}</span>
+                <input type="checkbox" class="sw" name="{{.Input}}" value="1" {{if .Checked}}checked{{end}}></label>
+              {{else}}
+              <label style="display:block">
+                <span class="tx"><strong>{{.Label}}</strong>{{if .Badge}} <span class="bdg">{{.Badge}}</span>{{end}}{{if .Help}}<small>{{.Help}}</small>{{end}}</span>
+                {{if eq .Kind "int"}}
+                <span style="display:flex;gap:10px;align-items:center;margin-top:8px"><input class="inp" style="width:140px" name="{{.Input}}" type="number" min="{{.Min}}" max="{{.Max}}" value="{{.Value}}" placeholder="not set"><span class="sub" style="font-size:12.5px;margin:0">{{.Unit}} ({{.Min}} to {{.Max}})</span></span>
+                {{else if eq .Kind "choice"}}
+                <select class="inp" style="margin-top:8px;max-width:460px" name="{{.Input}}">
+                  <option value="">Not set (leave it to the device)</option>
+                  {{$v := .Value}}{{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+                {{else if eq .Kind "text"}}
+                <input class="inp" style="margin-top:8px;max-width:560px" name="{{.Input}}" value="{{.Value}}" maxlength="300" placeholder="not set">
+                {{else if eq .Kind "list"}}
+                <textarea class="inp mono" style="margin-top:8px;max-width:560px" name="{{.Input}}" rows="3" spellcheck="false" placeholder="one per line">{{.Value}}</textarea>
+                {{else if eq .Kind "apps"}}
+                <textarea class="inp mono" style="margin-top:8px;max-width:560px" name="{{.Input}}" rows="5" spellcheck="false" placeholder="com.example.crm required&#10;com.example.news available&#10;com.example.game blocked">{{.Value}}</textarea>
+                {{end}}
+              </label>
+              {{end}}
+              {{if .Note}}<p class="sub" style="font-size:11.5px;margin:6px 0 0;color:var(--warn)">{{.Note}}</p>{{end}}
+            </div>
+            {{end}}
+          </section>
           {{end}}
-        </label>
-        {{end}}
-        {{if .Note}}<p class="sub" style="font-size:11.5px;margin:4px 0 0;color:var(--warn)">{{.Note}}</p>{{end}}
-      </div>
-      {{end}}
-      {{end}}
 
-      <h2 style="margin:18px 0 8px;font-size:15px">What counts as failing</h2>
-      <p class="sub" style="font-size:12.5px;margin:0 0 6px">Every report from a device is judged against these. A device that does not say is unknown, never a pass.</p>
-      {{range .Form.Rules}}
-      <div style="padding:8px 0;border-top:1px solid var(--line)">
-        {{if eq .Kind "bool"}}
-        <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="{{.Input}}" value="1" {{if .Checked}}checked{{end}}> {{.Label}}</label>
-        {{else if eq .Kind "int"}}
-        <label style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">{{.Label}} <input name="{{.Input}}" type="number" min="1" value="{{.Value}}" placeholder="not set" style="width:110px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit"> {{.Unit}}</label>
-        {{else}}
-        <label style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">{{.Label}} <input name="{{.Input}}" value="{{.Value}}" placeholder="not set" style="width:110px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit"></label>
-        {{end}}
+          <section class="bsec" data-section="What counts as failing">
+            <h3 class="sect" style="margin-top:14px">What counts as failing</h3>
+            <p class="sub" style="font-size:12.5px;margin:0 0 6px">Every report from a device is judged against these. A device that does not say is unknown, never a pass.</p>
+            {{range .Form.Rules}}
+            <div class="fld" data-label="{{.Label}}" data-kind="{{.Kind}}" data-unit="{{.Unit}}" data-rule="1">
+              {{if eq .Kind "bool"}}
+              <label class="swrow"><span class="tx"><strong>{{.Label}}</strong></span><input type="checkbox" class="sw" name="{{.Input}}" value="1" {{if .Checked}}checked{{end}}></label>
+              {{else if eq .Kind "int"}}
+              <label style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="font-weight:600">{{.Label}}</strong> <input class="inp" style="width:110px" name="{{.Input}}" type="number" min="1" value="{{.Value}}" placeholder="not set"> <span class="sub" style="margin:0">{{.Unit}}</span></label>
+              {{else}}
+              <label style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="font-weight:600">{{.Label}}</strong> <input class="inp" style="width:110px" name="{{.Input}}" value="{{.Value}}" placeholder="not set"></label>
+              {{end}}
+            </div>
+            {{end}}
+          </section>
+
+          <section class="bsec" data-section="When a device fails">
+            <h3 class="sect" style="margin-top:14px">When a device fails</h3>
+            <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:8px 0 14px">
+              <label style="display:flex;gap:8px;align-items:center">What happens to a device that fails:
+                <select class="inp" name="on_failure" id="on-failure">
+                  <option value="none" {{if eq .Form.OnFailure "none"}}selected{{end}}>Nothing, just report it</option>
+                  <option value="quarantine" {{if eq .Form.OnFailure "quarantine"}}selected{{end}}>Quarantine it</option>
+                </select></label>
+              <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sw" name="remediate" id="remediate" value="1" {{if .Form.Remediate}}checked{{end}}> Let the device put failures right by itself where it can</label>
+            </div>
+            <details style="margin:0 0 6px"><summary class="sub" style="cursor:pointer;font-size:13px">Roll this out to some devices first</summary>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px">
+                <label><span class="lab">Percent of devices</span>
+                  <input class="inp" name="rollout_percent" type="number" min="0" max="99" placeholder="empty for everyone"></label>
+                <label><span class="lab">Devices tagged</span>
+                  <input class="inp" name="rollout_tag" placeholder="pilot"></label>
+              </div>
+            </details>
+          </section>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <button type="submit" class="go">Save as a new version</button>
+          <a class="btn" href="/policies{{if .OSFilter}}?os={{.OSFilter}}{{end}}">Cancel</a>
+        </div>
       </div>
-      {{end}}
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:14px 0">
-      <label style="display:flex;gap:8px;align-items:center">What happens to a device that fails:
-        <select name="on_failure" style="padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit">
-          <option value="none" {{if eq .Form.OnFailure "none"}}selected{{end}}>Nothing, just report it</option>
-          <option value="quarantine" {{if eq .Form.OnFailure "quarantine"}}selected{{end}}>Quarantine it</option>
-        </select></label>
-      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="remediate" value="1" {{if .Form.Remediate}}checked{{end}}> Let the device put failures right by itself where it can</label>
+
+      <aside class="bld-side" id="bld-side" aria-live="polite" hidden>
+        <div class="card" style="margin-bottom:14px;border-color:color-mix(in srgb,var(--brand) 35%,#FFFFFF)">
+          <h2 class="sect" style="margin-bottom:4px">What this does</h2>
+          <p class="sub" style="font-size:12.5px;margin:0 0 6px">Updates as you change things.</p>
+          <ul class="sumlist" id="sum"></ul>
+        </div>
+        <div class="card">
+          <h2 class="sect" style="margin-bottom:6px">Who it reaches</h2>
+          <p id="reach" style="margin:0;font-size:14px;line-height:1.5"></p>
+          <p class="sub" style="font-size:12px;margin:8px 0 0">Counted from the devices enrolled today. Nothing changes on a device until you save.</p>
+        </div>
+      </aside>
     </div>
-    <details style="margin:0 0 12px"><summary class="sub" style="cursor:pointer;font-size:13px">Roll this out to some devices first</summary>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px">
-        <label><span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Percent of devices</span>
-          <input name="rollout_percent" type="number" min="0" max="99" placeholder="empty for everyone" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit"></label>
-        <label><span style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Devices tagged</span>
-          <input name="rollout_tag" placeholder="pilot" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit"></label>
-      </div>
-    </details>
-    <button type="submit" style="padding:9px 16px;border-radius:6px;border:0;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer">Save as a new version</button>
-    <a href="/policies{{if .OSFilter}}?os={{.OSFilter}}{{end}}" style="margin-left:12px;font-size:13px">Cancel</a>
   </form>
+  <script>
+  (function () {
+    var form = document.getElementById('builder');
+    if (!form) { return; }
+    var side = document.getElementById('bld-side'), sum = document.getElementById('sum'),
+        reach = document.getElementById('reach'), tabs = document.getElementById('sec-tabs'),
+        secs = form.querySelectorAll('.bsec'), owner = document.getElementById('owner-sel');
+    side.hidden = false;
+
+    // Sections: one at a time, when the script runs. Without it every section
+    // is on the page, one after another, and the form works the same.
+    if (secs.length > 1) {
+      tabs.hidden = false;
+      var buttons = [];
+      var show = function (i) {
+        secs.forEach(function (s, j) { s.hidden = j !== i; });
+        buttons.forEach(function (b, j) { b.setAttribute('aria-selected', j === i ? 'true' : 'false'); if (j === i) { b.setAttribute('aria-current', 'true'); } else { b.removeAttribute('aria-current'); } });
+      };
+      secs.forEach(function (s, i) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'tab');
+        b.textContent = s.getAttribute('data-section');
+        b.addEventListener('click', function () { show(i); });
+        tabs.appendChild(b); buttons.push(b);
+      });
+      show(0);
+    }
+
+    function line(text) { var li = document.createElement('li'); li.textContent = text; sum.appendChild(li); }
+    function update() {
+      sum.textContent = '';
+      var n = 0;
+      form.querySelectorAll('.fld').forEach(function (f) {
+        var label = f.getAttribute('data-label'), kind = f.getAttribute('data-kind'),
+            unit = f.getAttribute('data-unit') || '', rule = f.getAttribute('data-rule') ? 'Fails a device unless: ' : '';
+        var el = f.querySelector('input, select, textarea');
+        if (!el) { return; }
+        if (kind === 'bool') { if (el.checked) { line(rule + label); n++; } }
+        else if (kind === 'choice') { if (el.value) { line(label + ': ' + el.options[el.selectedIndex].text); n++; } }
+        else if (kind === 'list' || kind === 'apps') {
+          var c = el.value.split('\n').filter(function (x) { return x.trim(); }).length;
+          if (c) { line(label + ': ' + c + (c === 1 ? ' entry' : ' entries')); n++; }
+        } else if (el.value.trim()) { line(rule + label + ': ' + el.value.trim() + (unit ? ' ' + unit : '')); n++; }
+      });
+      var of = document.getElementById('on-failure');
+      if (of && of.value === 'quarantine') { line('A device that fails is quarantined.'); n++; }
+      var rem = document.getElementById('remediate');
+      if (rem && rem.checked) { line('Devices fix failures by themselves where they can.'); n++; }
+      if (!n) { line('Nothing yet. This policy says nothing about any device until you switch something on.'); }
+      var key = owner && owner.value ? owner.value : 'any';
+      var count = parseInt(form.getAttribute('data-reach-' + key), 10) || 0;
+      var os = form.getAttribute('data-os-name'), who = key === 'any' ? '' : (key === 'company' ? 'company-owned ' : 'personal ');
+      reach.textContent = count === 0
+        ? 'No ' + who + os + ' devices are enrolled yet, so nothing is affected today.'
+        : 'It applies to ' + count + ' ' + who + os + (count === 1 ? ' device.' : ' devices.');
+    }
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    update();
+  })();
+  </script>
 
   {{else}}
   <div class="card" style="margin-bottom:14px">

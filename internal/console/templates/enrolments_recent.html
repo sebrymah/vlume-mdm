@@ -1,0 +1,9 @@
+{{range .Enrolments}}{{$st := .Status $.Now}}
+<div class="feed" style="align-items:center">
+  <div style="flex:1;min-width:0"><strong>{{.Label}}</strong>
+    <div class="sub" style="margin:2px 0 0;font-size:12.5px">{{.OSFamily}}{{if .AssignedTo}}, for {{.AssignedTo}}{{end}}</div></div>
+  <span class="pill {{statusPill $st}}">{{if eq $st "enrolled"}}Joined{{else if eq $st "waiting for the device"}}Waiting{{else}}{{$st}}{{end}}</span>
+</div>
+{{else}}
+<p class="sub" style="margin:6px 0 0">Nothing has been invited yet.</p>
+{{end}}

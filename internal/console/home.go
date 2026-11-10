@@ -85,7 +85,7 @@ func BuildHome(c data.StateCounts, pending int, audit []data.AuditEvent, now tim
 	h := &Home{}
 
 	if c.Total > 0 {
-		h.Percent = c.Compliant * 100 / c.Total
+		h.Percent = sharePercent(c.Compliant, c.Total)
 	}
 
 	// The ring, in the same order as the legend.
@@ -166,6 +166,27 @@ func BuildHome(c data.StateCounts, pending int, audit []data.AuditEvent, now tim
 		})
 	}
 	return h
+}
+
+// sharePercent rounds to the nearest whole number, but never says 100 unless
+// every device is in the share, and never says 0 while one is. A fleet that is
+// 99.6% compliant is not "all clear", and a headline number is the one place
+// that mistake would be believed.
+func sharePercent(n, total int) int {
+	if total <= 0 || n <= 0 {
+		return 0
+	}
+	if n >= total {
+		return 100
+	}
+	p := (n*100 + total/2) / total
+	if p >= 100 {
+		p = 99
+	}
+	if p < 1 {
+		p = 1
+	}
+	return p
 }
 
 func plural(n int, one, many string) string {

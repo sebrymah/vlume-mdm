@@ -463,6 +463,7 @@ func (g *Gateway) Handler() http.Handler {
 		mux.Handle("POST /commands/{id}/approve", g.formPost(authz.ApproveWipe, g.consoleDecide(true)))
 		mux.Handle("POST /commands/{id}/refuse", g.formPost(authz.ApproveWipe, g.consoleDecide(false)))
 		mux.Handle("GET /enrolments", g.page(authz.ViewDevices, g.console.Enrolments))
+		mux.Handle("GET /enrolments/recent", g.page(authz.ViewDevices, g.console.EnrolmentsRecent))
 		mux.Handle("POST /enrolments", g.formPost(authz.EnrolDevice, g.consoleCreateEnrolment))
 		mux.Handle("POST /enrolments/{id}/revoke", g.formPost(authz.EnrolDevice, g.consoleRevokeEnrolment))
 		mux.Handle("GET /policies", g.page(authz.ViewDevices, g.console.Policies))

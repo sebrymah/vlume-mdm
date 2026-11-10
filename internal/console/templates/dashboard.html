@@ -4,7 +4,7 @@
 {{template "nav" .}}
 <main>
 <h1>Welcome back</h1>
-<p class="sub">{{.Counts.Total}} devices enrolled{{if .Counts.Total}}, {{pct .Counts.Compliant .Counts.Total}}% compliant{{end}}.</p>
+<p class="sub">{{.Counts.Total}} devices enrolled{{if .Counts.Total}}, {{.Home.Percent}}% compliant{{end}}.</p>
 
 {{template "placeholder" .}}
 

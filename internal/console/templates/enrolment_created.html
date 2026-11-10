@@ -4,7 +4,7 @@
 {{template "nav" .}}
 <main>
   {{template "placeholder" .}}
-  <h1>Enrolment link ready</h1>
+  <h1>Your link is ready</h1>
   <p class="sub">Give this to whoever has the device. <strong>It is shown
   once.</strong> We keep only a hash of it, so it cannot be read back, and if
   it is lost the answer is to make another one.</p>
@@ -48,6 +48,27 @@
         } else { document.execCommand('copy'); done(); }
       });
     });
+  </script>
+
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:4px"><span class="pulse" aria-hidden="true"></span><h2 class="sect" style="margin:0">Waiting for the device</h2></div>
+    <p class="sub" style="font-size:12.5px;margin:0 0 4px">This list refreshes by itself. It turns to Joined when the device redeems the link.</p>
+    <div id="recent" aria-live="polite">{{template "enrolments_recent.html" .}}</div>
+  </div>
+  <script>
+    (function () {
+      var box = document.getElementById('recent');
+      if (!box || !window.fetch) { return; }
+      var tries = 0;
+      var tick = setInterval(function () {
+        if (document.hidden) { return; }
+        if (++tries > 120) { clearInterval(tick); return; }
+        fetch('/enrolments/recent', { credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.text() : null; })
+          .then(function (h) { if (h !== null) { box.innerHTML = h; } })
+          .catch(function () {});
+      }, 5000);
+    })();
   </script>
 
   <p class="sub">The device sends this link&rsquo;s token together with a

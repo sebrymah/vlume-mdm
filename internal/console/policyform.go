@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"platform/internal/catalog"
+	"platform/internal/data"
 	"platform/internal/policy"
 )
 
@@ -30,6 +31,34 @@ type PolicyForm struct {
 	// nothing is delivered yet.
 	Note string
 	Why  string
+	// Reach is how many enrolled devices of this system the policy would
+	// apply to, by who owns them, so the page can say "reaches 42 phones"
+	// before anything is saved.
+	Reach Reach
+}
+
+// Reach counts devices a policy for one system would apply to.
+type Reach struct {
+	Any, Company, Personal int
+}
+
+// ReachOf counts the devices of one system. A retired device is gone, and is
+// not counted as something a policy reaches.
+func ReachOf(ds []data.Device, os string) Reach {
+	var r Reach
+	for _, d := range ds {
+		if d.State == "retired" || !strings.EqualFold(d.OSFamily, os) {
+			continue
+		}
+		r.Any++
+		switch d.Ownership {
+		case "company":
+			r.Company++
+		case "personal":
+			r.Personal++
+		}
+	}
+	return r
 }
 
 // FormSection is a heading and the settings under it.

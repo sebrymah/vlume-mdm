@@ -85,19 +85,41 @@
   apps and profiles. The device keeps working and everything personal on it
   stays. One approval, and it can be undone by enrolling again.</p>
 
-  <form class="act" method="post" action="/devices/{{.Device.ID}}/wipe">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
-    <input type="hidden" name="scope" value="all">
-    <div>
+  <div class="danger-box">
+    <h3>Erase everything on {{.Device.Name}}</h3>
+    <p>Returns the device to factory state. The person's own files, photos and
+    accounts go with it, and there is no undo. Two approvals from two different
+    roles, and you cannot approve your own request.</p>
+    <form method="post" action="/devices/{{.Device.ID}}/wipe" data-confirm-form>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="return" value="/devices/{{.Device.ID}}">
+      <input type="hidden" name="scope" value="all">
       <label for="all-reason">Why are you erasing everything?</label>
       <input type="text" id="all-reason" name="reason" placeholder="Stolen, police report filed">
-    </div>
-    <button type="submit" class="danger">Erase everything</button>
-  </form>
-  <p class="note">Returns the device to factory state. The person's own files,
-  photos and accounts go with it, and there is no undo. Two approvals from two
-  different roles, and you cannot approve your own request.</p>
+      <label for="all-confirm">Type the device's name to continue: <strong>{{.Device.Name}}</strong></label>
+      <input type="text" id="all-confirm" name="confirm_name" autocomplete="off" spellcheck="false"
+             placeholder="{{.Device.Name}}" data-confirm-name="{{.Device.Name}}" aria-describedby="all-confirm-hint">
+      <p id="all-confirm-hint" style="margin:6px 0 12px;font-size:12px;color:var(--muted)" role="status">The button stays off until the name matches.</p>
+      <button type="submit" class="danger" id="all-go">Ask for approval to erase</button>
+    </form>
+  </div>
+  <script>
+  (function () {
+    var f = document.querySelector('form[data-confirm-form]');
+    if (!f) { return; }
+    var input = f.querySelector('[data-confirm-name]'), go = f.querySelector('#all-go'),
+        hint = document.getElementById('all-confirm-hint');
+    function check() {
+      var ok = input.value.trim().toLowerCase() === input.getAttribute('data-confirm-name').trim().toLowerCase();
+      go.disabled = !ok;
+      hint.textContent = ok ? 'That matches. You can ask for approval now.' : 'The button stays off until the name matches.';
+    }
+    // Off until it matches, and only when this script runs. Without it the
+    // form still works: the server checks the name too.
+    go.disabled = true;
+    input.addEventListener('input', check);
+  })();
+  </script>
 
   {{if .Device.Retired}}
   <p class="note"><strong>Retired</strong>{{if .Device.OffboardedAt}} on {{.Device.OffboardedAt.Format "2 Jan 2006 15:04"}}{{end}}. Its certificate is revoked and its slot is free.</p>

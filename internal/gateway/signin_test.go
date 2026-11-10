@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -76,9 +77,11 @@ func (b *browser) get(url string) (*http.Response, string) {
 		b.t.Fatalf("GET %s: %v", url, err)
 	}
 	defer resp.Body.Close()
-	buf := make([]byte, 64*1024)
-	n, _ := resp.Body.Read(buf)
-	return resp, string(buf[:n])
+	// All of it, not one read: a single Read returns whatever the first
+	// network chunk held, so a page whose head grew would be cut off before
+	// its content and the tests would fail for a reason a browser never sees.
+	all, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return resp, string(all)
 }
 
 // stopAtRedirect runs one request without following anything, for the tests

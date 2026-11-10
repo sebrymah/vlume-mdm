@@ -148,6 +148,26 @@ func (g *Gateway) consoleWipe(w http.ResponseWriter, r *http.Request, res Resolu
 		t = command.WipeFull
 	}
 
+	// The erase-everything box asks for the device's name to be typed, so a
+	// misclick cannot start a wipe. The page enforces it in the browser, and
+	// this is the same check where it cannot be skipped by editing the page:
+	// if a name came with the form it has to be the right one.
+	//
+	// A form that sends no name at all is still accepted. That is the
+	// request a script or an older page makes, and it is no weaker than the
+	// JSON endpoint, which takes the same request with no name. The name
+	// guards against slips, not against someone who may already do this.
+	if t == command.WipeFull {
+		if typed, sent := r.Form["confirm_name"]; sent {
+			want, werr := g.deviceName(r, id)
+			if werr != nil || !confirmMatches(typed, want) {
+				back(w, r, "/devices/"+id.String(),
+					"That is not the device's name, so nothing was requested. Type it exactly as it is shown.")
+				return
+			}
+		}
+	}
+
 	var out command.Command
 	err = g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),
 		func(ctx context.Context, tx *data.Tx) error {
@@ -574,4 +594,30 @@ func (g *Gateway) consoleReleaseDevice(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	back(w, r, "/devices/"+id.String(), "Released. It is unknown until its next report.")
+}
+
+// deviceName reads a device's name inside the caller's tenant. Another
+// tenant's device reads as an error, the same as one that does not exist.
+func (g *Gateway) deviceName(r *http.Request, id uuid.UUID) (string, error) {
+	var name string
+	err := g.store.WithTenant(r.Context(), ClaimFrom(r.Context()),
+		func(ctx context.Context, tx *data.Tx) error {
+			d, e := data.GetDevice(ctx, tx, id)
+			if e != nil {
+				return e
+			}
+			name = d.Name
+			return nil
+		})
+	return name, err
+}
+
+// confirmMatches compares what was typed to the device's name, ignoring case
+// and the spaces at either end, and only when something was typed.
+func confirmMatches(typed []string, want string) bool {
+	if len(typed) == 0 {
+		return false
+	}
+	got := strings.TrimSpace(typed[0])
+	return got != "" && strings.EqualFold(got, strings.TrimSpace(want))
 }

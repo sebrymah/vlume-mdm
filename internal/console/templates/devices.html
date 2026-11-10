@@ -4,34 +4,72 @@
 {{template "nav" .}}
 <main>
 <h1>Devices</h1>
-<p class="sub">{{len .Devices}} enrolled</p>
+<p class="sub">{{len .Devices}} enrolled. Pick one to see what is going on with it.</p>
 
 {{template "placeholder" .}}
 
-<div class="scroll">
-<table>
-  <caption class="sub" style="text-align:left;padding:11px 13px 0">Devices in this tenant</caption>
-  <thead><tr>
-    <th scope="col">Device</th><th scope="col">Held by</th><th scope="col">Serial</th>
-    <th scope="col">System</th><th scope="col">Ownership</th><th scope="col">State</th>
-  </tr></thead>
-  <tbody>
-  {{range .Devices}}
-    <tr>
-      <td><a href="/devices/{{.ID}}">{{.Name}}</a>
-          {{if .ReportedLost}} <span class="pill" style="background:#FDE7E5;color:var(--bad)">reported lost</span>{{end}}</td>
-      <td>{{if .AssignedTo}}{{.AssignedTo}}{{else}}<span style="color:var(--muted)">unassigned</span>{{end}}</td>
-      <td><code>{{.Serial}}</code></td>
-      <td>{{.OSFamily}}</td>
-      <td>{{.Ownership}}</td>
-      <td><span class="pill">{{.State}}</span></td>
-    </tr>
+<nav class="chips" aria-label="Filter devices">
+  {{range .Chips}}<a class="chip" href="{{.Href}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}}<small>{{.N}}</small></a>{{end}}
+</nav>
+<form class="finder" method="get" action="/devices" role="search">
+  {{if .Show}}<input type="hidden" name="show" value="{{.Show}}">{{end}}
+  <input type="search" name="q" value="{{.Query}}" placeholder="Search by name, person or serial" aria-label="Search devices">
+  <button type="submit">Search</button>
+</form>
+
+<div class="split">
+  <section class="list" aria-label="Devices in this tenant">
+  {{range .Rows}}
+    <a class="drow" href="/devices/{{.ID}}" data-panel="/devices/{{.ID}}/panel">
+      <span class="avt" aria-hidden="true">{{.Initial}}</span>
+      <span class="nm"><strong>{{.Name}}</strong><small>{{.Holder}}</small></span>
+      <span class="os">{{.System}}</span>
+      <span class="pill {{.Pill}}">{{.Label}}</span>
+      <span class="seen">{{.Seen}}</span>
+    </a>
   {{else}}
-    <tr><td colspan="5" style="color:var(--muted)">No devices are enrolled yet.</td></tr>
+    <div class="card" style="text-align:center;padding:36px 20px">
+      {{if .Devices}}<strong>No devices match that.</strong>
+      <p class="sub" style="margin:8px 0 14px">Try another filter, or <a href="/devices">show them all</a>.</p>
+      {{else}}<strong>No devices are enrolled yet.</strong>
+      {{if .CanEnrol}}<p class="sub" style="margin:8px 0 14px">Make an invite and the first one will show up here.</p>
+      <a class="btn go" href="/enrolments">Add devices</a>{{end}}
+      {{end}}
+    </div>
   {{end}}
-  </tbody>
-</table>
+  </section>
+  <aside class="dpanel" id="dpanel" tabindex="-1" aria-live="polite" hidden></aside>
 </div>
+<script>
+(function () {
+  var panel = document.getElementById('dpanel');
+  if (!panel || !window.fetch) { return; }
+  var current = null;
+  function close() {
+    panel.hidden = true; panel.innerHTML = '';
+    if (current) { current.removeAttribute('aria-current'); current = null; }
+  }
+  document.querySelectorAll('a.drow[data-panel]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      // A modified click is the person asking for the full page in a new tab.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) { return; }
+      e.preventDefault();
+      fetch(a.getAttribute('data-panel'), { credentials: 'same-origin' })
+        .then(function (r) { if (!r.ok) { throw new Error('x'); } return r.text(); })
+        .then(function (html) {
+          if (current) { current.removeAttribute('aria-current'); }
+          current = a; a.setAttribute('aria-current', 'true');
+          panel.innerHTML = html; panel.hidden = false; panel.focus();
+        })
+        .catch(function () { window.location.href = a.href; });
+    });
+  });
+  panel.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-close]')) { close(); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) { close(); } });
+})();
+</script>
 </main>
 </div>
 {{template "foot" .}}

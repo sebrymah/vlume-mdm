@@ -236,6 +236,11 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-freezegap      # accept two freezes closer than 60 days, expect a FAILURE
 ./run_go.sh --break-freezelength   # accept a freeze longer than 90 days, expect a FAILURE
 ./run_go.sh --break-minapi         # send the oldest Android as text instead of a number, expect a FAILURE
+./run_go.sh --break-wipename        # let a wrong device name start an erase, expect a FAILURE
+./run_go.sh --break-filterwiden     # make an unknown device filter show everything, expect a FAILURE
+./run_go.sh --break-panelscope      # let the side panel answer for a missing device, expect a FAILURE
+./run_go.sh --break-homecalm        # make Home always say all is calm, expect a FAILURE
+./run_go.sh --break-homequeue       # tell every role about the approvals queue, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -2469,6 +2474,41 @@ plus two, and names it as the callback (`gateway.Config.AndroidCallbackBase`;
 the way back. And the fake refuses a plain-http callback exactly as Google
 does (`--break-fakehttps`), so a console tested only against the fake cannot
 pass with a callback Google would refuse.
+
+## A friendlier console: Home, the device list and the erase box
+
+Three pages were redesigned from the design canvas (Home, Devices with a side
+panel, and the erase-everything confirmation). The shape stays server-rendered:
+no framework, one small script per page, and every page works with the script
+off.
+
+- **Home** leads with "Needs you today": a card for requests waiting (shown only
+  to a role that can approve, so nobody is told about a queue they cannot
+  touch), devices needing attention, and devices gone quiet. A healthy fleet
+  gets one calm card; a silent device is never counted as fine
+  (`--break-homecalm`, `--break-homequeue`). Under it are the fleet ring, the
+  same 30-day line as before, and the last few audit records for the roles that
+  already have the audit log.
+- **Devices** is filtered by link, not by script: `?show=attention`, `?show=quiet`
+  or an operating system, plus `?q=` for a name, person or serial. The chips
+  count the whole fleet so choosing one does not change the others, and a filter
+  nobody recognises shows nothing rather than everything
+  (`--break-filterwiden`).
+- **The side panel** is `GET /devices/{id}/panel`: a fragment, read-only, `no-store`,
+  scoped to the caller's tenant (another tenant's device is a 404,
+  `--break-panelscope`). Clicking a row fetches it; a modified click, or no
+  script, goes to the device's own page, where the actions and their approvals
+  stay.
+- **The erase box** asks for the device's name. The page keeps the button off
+  until it matches, and the server checks the same thing: if a name is sent it
+  has to be right, ignoring case and stray spaces (`--break-wipename`). A form
+  that sends no name at all is still accepted, which is no weaker than the JSON
+  endpoint. The name guards against slips, not against someone who may already
+  do this. Removing only work data never asks for it.
+
+What is not here yet from the canvas: the 14-day per-device health strip (only
+fleet-wide history is kept), the Command K search, the live "waiting for
+phones" list, the "remind the owner" button and the setup checklist on Home.
 
 ## Reports
 

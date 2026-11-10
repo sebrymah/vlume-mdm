@@ -117,6 +117,16 @@ type page struct {
 
 	Notify *Notifications
 
+	// The friendlier Home and Devices pages, and the side panel (home.go).
+	Home       *Home
+	Rows       []DeviceRow
+	Chips      []Chip
+	Query      string
+	Show       string
+	PanelTone  string
+	PanelWhy   string
+	CanApprove bool
+
 	// The setup checklist, the sign-in settings, and what the branding
 	// form needs to say about its colour.
 	Setup           *Setup
@@ -249,6 +259,7 @@ func (c *Console) render(w http.ResponseWriter, r *http.Request, s Session,
 		CanSetPolicy:    authz.Can(s.Role, authz.ChangePolicy),
 		CanManageAccess: authz.Can(s.Role, authz.ManageAccess),
 		CanRetrieveKey:  authz.Can(s.Role, authz.RetrieveKey),
+		CanApprove:      authz.Can(s.Role, authz.ApproveWipe),
 		Now:             time.Now().UTC(),
 	}
 
@@ -301,11 +312,34 @@ func (c *Console) Dashboard(w http.ResponseWriter, r *http.Request, s Session) {
 			}
 			p.Trend = trend
 			p.TrendLine = DrawTrend(trend, 600, 120)
+
+			// A queue is only mentioned to a role that can act on it. For
+			// everyone else the count stays at -1 and the card is absent,
+			// the same rule the navigation follows.
+			pending := -1
+			if p.CanApprove {
+				held, err := command.List(ctx, tx, command.Filter{OnlyHeld: true, Limit: 50})
+				if err != nil {
+					return err
+				}
+				pending = len(held)
+			}
+			// What happened lately is read for the roles that already have
+			// the audit log in their navigation, and for nobody else.
+			var recent []data.AuditEvent
+			if authz.Can(s.Role, authz.ViewAudit) {
+				if recent, err = data.RecentAudit(ctx, tx, 5); err != nil {
+					return err
+				}
+			}
+			p.Home = BuildHome(counts, pending, recent, time.Now().UTC())
 			return nil
 		})
 }
 
 func (c *Console) Devices(w http.ResponseWriter, r *http.Request, s Session) {
+	show := r.URL.Query().Get("show")
+	q := r.URL.Query().Get("q")
 	c.render(w, r, s, "devices.html", "/devices", "Devices",
 		func(ctx context.Context, tx *data.Tx, p *page) error {
 			ds, err := data.ListDevices(ctx, tx)
@@ -313,8 +347,57 @@ func (c *Console) Devices(w http.ResponseWriter, r *http.Request, s Session) {
 				return err
 			}
 			p.Devices = ds
+			p.Rows, p.Chips = BuildDeviceList(ds, show, q, time.Now().UTC())
+			p.Query = strings.TrimSpace(q)
+			p.Show = strings.ToLower(strings.TrimSpace(show))
 			return nil
 		})
+}
+
+// DevicePanel is the small page the Devices list slides in beside itself.
+// It is a fragment, with no menu and no brand bar, and it is read-only: the
+// actions stay on the device's own page, where their reasons and approvals
+// are asked for.
+func (c *Console) DevicePanel(w http.ResponseWriter, r *http.Request, s Session) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	var p page
+	found := false
+	err = c.store.WithTenant(r.Context(), s.Claim, func(ctx context.Context, tx *data.Tx) error {
+		d, comp, err := PanelLoad(ctx, tx, id, time.Now().UTC())
+		if err != nil || d == nil {
+			return err
+		}
+		found = true
+		p.Device = d
+		p.Compliance = comp
+		p.PanelTone, p.PanelWhy = Explain(*d, comp)
+		if d.PersonID != nil {
+			if h, herr := data.GetPerson(ctx, tx, *d.PersonID); herr == nil {
+				p.Holder = &h
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		http.Error(w, "could not render the page", http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		// Another tenant's device and one that does not exist look the same.
+		http.NotFound(w, r)
+		return
+	}
+	p.Now = time.Now().UTC()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// It holds a device's state and its holder: not for a shared cache.
+	w.Header().Set("Cache-Control", "no-store")
+	if err := tmpl.ExecuteTemplate(w, "device_panel.html", p); err != nil {
+		http.Error(w, "could not render the page", http.StatusInternalServerError)
+	}
 }
 
 func (c *Console) Device(w http.ResponseWriter, r *http.Request, s Session) {

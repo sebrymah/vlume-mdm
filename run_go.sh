@@ -1776,6 +1776,50 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	return s, err == nil && n > 0"
   ;;
 
+--break-wipename)
+  # A wrong device name no longer stops an erase-everything request.
+  echo "==> NEGATIVE CONTROL: the erase does not check the typed device name"
+  patch internal/gateway/console_post.go \
+    "if werr != nil || !confirmMatches(typed, want) {" \
+    "if false && (werr != nil || !confirmMatches(typed, want)) {"
+  ;;
+
+--break-filterwiden)
+  # A filter nobody recognises shows every device instead of none.
+  echo "==> NEGATIVE CONTROL: an unknown device filter widens to everything"
+  patch internal/console/home.go \
+    "	return strings.EqualFold(d.OSFamily, show)" \
+    "	return true"
+  ;;
+
+--break-panelscope)
+  # The side panel answers for a device that is not in the caller's tenant.
+  echo "==> NEGATIVE CONTROL: the device panel does not turn a missing device into a 404"
+  patch internal/console/console.go \
+    "	if !found {
+		// Another tenant's device and one that does not exist look the same." \
+    "	if false && !found {
+		// Another tenant's device and one that does not exist look the same."
+  ;;
+
+--break-homecalm)
+  # Home says all is calm even when something needs a person.
+  echo "==> NEGATIVE CONTROL: Home always shows the calm card"
+  patch internal/console/home.go \
+    "	if len(h.Needs) == 0 {" \
+    "	if len(h.Needs) == 0 || true {"
+  ;;
+
+--break-homequeue)
+  # Home tells every role about the approvals queue.
+  echo "==> NEGATIVE CONTROL: Home tells a role that cannot approve about the queue"
+  patch internal/console/console.go \
+    "			if p.CanApprove {
+				held, err := command.List" \
+    "			if true {
+				held, err := command.List"
+  ;;
+
 --break-opsrealm)
   # An organisation's session, presented as an owner's, is believed.
   echo "==> NEGATIVE CONTROL: the owner's console does not check the session's realm"
@@ -2069,7 +2113,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifioff --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifioff --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi --break-wipename --break-filterwiden --break-panelscope --break-homecalm --break-homequeue"
   echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear --break-opsresetrevoke --break-opsdisablerevoke --break-opspwrevoke --break-opslinkfits --break-opspendstale"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2

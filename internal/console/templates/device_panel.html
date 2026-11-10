@@ -1,0 +1,11 @@
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+  <div style="min-width:0"><h2>{{.Device.Name}}</h2>
+    <p class="sub" style="margin:3px 0 0">{{if .Holder}}{{.Holder.Label}}{{else if .Device.AssignedTo}}{{.Device.AssignedTo}}{{else}}Not held by anyone{{end}}</p></div>
+  <button type="button" data-close aria-label="Close details" style="padding:0;width:44px;flex:none">&times;</button>
+</div>
+{{if .PanelWhy}}<div class="why {{.PanelTone}}" role="status">{{.PanelWhy}}</div>{{end}}
+<div class="kv"><span>Last reported</span><span>{{if .Device.LastReportAt}}{{.Device.LastReportAt.Format "2 Jan 15:04"}}{{else}}never{{end}}</span></div>
+<div class="kv"><span>System</span><span>{{.Device.OSFamily}}, {{.Device.Ownership}}</span></div>
+<div class="kv"><span>Serial</span><span><code>{{.Device.Serial}}</code></span></div>
+{{if .Device.ReportedLost}}<div class="kv"><span>Reported lost</span><span>{{.Device.ReportedLostBy}}</span></div>{{end}}
+<p style="margin:14px 0 0"><a class="btn go" href="/devices/{{.Device.ID}}" style="width:100%">Open the full page</a></p>

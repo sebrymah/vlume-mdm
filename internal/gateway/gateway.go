@@ -439,6 +439,7 @@ func (g *Gateway) Handler() http.Handler {
 		mux.Handle("GET /{$}", http.HandlerFunc(g.home))
 		mux.Handle("GET /devices", g.page(authz.ViewDevices, g.console.Devices))
 		mux.Handle("GET /devices/{id}", g.page(authz.ViewDevices, g.console.Device))
+		mux.Handle("GET /devices/{id}/panel", g.page(authz.ViewDevices, g.console.DevicePanel))
 		mux.Handle("GET /audit", g.page(authz.ViewAudit, g.console.Audit))
 		mux.Handle("GET /reports", g.page(authz.ViewDevices, g.consoleReports))
 		mux.Handle("GET /apps", g.page(authz.ViewDevices, g.consoleApps))

@@ -111,7 +111,7 @@ func TestAJoinLinkOpensWithoutSigningInAndNeedsItsCode(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "enterprise.google.com") || len(qrtest.PageImages(rec.Body.String())) != 0 {
 		t.Fatal("the page gave a way in before the code was entered")
 	}
-	if rec.Header().Get("Referrer-Policy") != "no-referrer" || !strings.Contains(rec.Header().Get("Cache-Control"), "no-store") {
+	if rec.Header().Get("Referrer-Policy") != "same-origin" || !strings.Contains(rec.Header().Get("Cache-Control"), "no-store") {
 		t.Fatal("the page that holds the secret in its address can be cached or leaked in a Referer")
 	}
 

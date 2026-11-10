@@ -501,7 +501,7 @@ func TestTheOwnersPagesShowOrganisationsAsCountsAndNeverWhatIsInsideThem(t *test
 		if strings.Contains(body, serial) || strings.Contains(body, deviceName) {
 			t.Errorf("%s shows what is inside an organisation", p)
 		}
-		for h, want := range map[string]string{"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer"} {
+		for h, want := range map[string]string{"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin"} {
 			if resp.Header.Get(h) != want {
 				t.Errorf("%s: %s is %q", p, h, resp.Header.Get(h))
 			}

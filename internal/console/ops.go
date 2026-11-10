@@ -132,7 +132,10 @@ func RenderOps(w http.ResponseWriter, status int, v OpsView) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin, not no-referrer: with no-referrer Safari sends the form's
+	// Origin as "null", which the same-origin check rightly refuses. Nothing
+	// leaves this site in a Referer either way.
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	w.WriteHeader(status)
 	if err := tmpl.ExecuteTemplate(w, v.Page, v); err != nil {

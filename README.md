@@ -866,7 +866,7 @@ The rules, each with a test and a control:
 - **Nothing is stored that can be read back.** The link's secret is kept only
   as a SHA-256 and the code only as an argon2id hash (slow on purpose, since six
   digits is a small space). The page that holds the secret in its address is
-  `no-store` with `Referrer-Policy: no-referrer`.
+  `no-store` with `Referrer-Policy: same-origin`.
 - **One organisation's link is nothing at another's address.**
 
 The devices from a team link have no named owner, because the code is shared.

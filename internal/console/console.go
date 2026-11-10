@@ -1046,7 +1046,9 @@ func (c *Console) JoinPage(w http.ResponseWriter, r *http.Request, claim string,
 	// The address of this page is the secret. It must not travel in a Referer
 	// to anywhere the page links, and the page must not be kept.
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin keeps the address from travelling to any other site, and
+	// unlike no-referrer lets Safari send a real Origin on the form post.
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.WriteHeader(status)
 	if err := tmpl.ExecuteTemplate(w, "join.html", p); err != nil {
 		http.Error(w, v.Title, status)

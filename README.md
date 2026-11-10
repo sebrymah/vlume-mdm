@@ -229,6 +229,13 @@ Needs Docker. Nothing else: no local PostgreSQL, no Go toolchain.
 ./run_go.sh --break-listmerge      # join two allow-lists instead of intersecting them, expect a FAILURE
 ./run_go.sh --break-futurepatch    # let a security patch dated in the future pass, expect a FAILURE
 ./run_go.sh --break-debugpartial   # read debugging as off when only one switch said so, expect a FAILURE
+./run_go.sh --break-wifiempty      # two disjoint Wi-Fi lists leave an empty list (allowing every network), expect a FAILURE
+./run_go.sh --break-wifiminitems   # accept an empty Wi-Fi allow-list, expect a FAILURE
+./run_go.sh --break-keyguardorder  # only one lock-screen switch is sent, expect a FAILURE
+./run_go.sh --break-freezetype     # send an update freeze with no update type, expect a FAILURE
+./run_go.sh --break-freezegap      # accept two freezes closer than 60 days, expect a FAILURE
+./run_go.sh --break-freezelength   # accept a freeze longer than 90 days, expect a FAILURE
+./run_go.sh --break-minapi         # send the oldest Android as text instead of a number, expect a FAILURE
 ./run_go.sh --break-rotategrace   # end every open session at a key rotation, expect a FAILURE
 ./run_go.sh --break-keysdiffer    # let one key do all three jobs, expect a FAILURE
 ./run_go.sh --break-bucketssrf    # send the export to any address a name resolves to, expect a FAILURE
@@ -609,7 +616,7 @@ sections.
   minimum version, firewall, rooted). Unchanged. A device that does not say is
   unknown, never a pass.
 - **Settings** (new, the `config` object in the body): what it *changes* on a
-  device, from the catalogue for its system (`internal/catalog`). Android has 41
+  device, from the catalogue for its system (`internal/catalog`). Android has 59
   across password and lock screen, screen and display, device features, network,
   apps, updates, work-profile separation and messages; Windows has 24 across
   sign-in, encryption and security, device features, desktop and display, updates
@@ -621,6 +628,35 @@ The catalogue is fixed, not an expression language. An unknown setting name, a
 value of the wrong type, a number out of range, a package name that is not one,
 or a Windows picture address that is not https is refused where it is typed
 (`--break-configunknown`).
+
+### The eleven added Android settings
+
+Eleven settings came from comparing the catalogue with Google's own list of what
+a policy can hold; every field name and value was read from Google's published
+description of its API, not written from memory.
+
+- **Lock screen** (three switches, one list at Google): block fingerprint and
+  face unlock, hide message contents on the lock screen, block Smart Lock. They
+  are settled together in `android.Translate` in a fixed order, so no switch
+  hides another (`--break-keyguardorder`).
+- **Device**: block the microphone; block all USB data, not only file copying
+  (Android 12+); lock the phone to the approved apps (kiosk), which replaces the
+  home screen with the apps listed under Apps.
+- **Network**: Wi-Fi networks the phone may join (Android 13+); block mobile data
+  when roaming; block 2G (Android 14+). An allow-list may not be empty, because
+  Google refuses an empty one and leaving it out would allow every network
+  (`--break-wifiminitems`). Two policies whose lists share nothing allow nothing:
+  the answer is a list no network can match, never "no list"
+  (`--break-wifiempty`).
+- **Updates**: pause system updates in busy seasons, and the oldest Android a
+  phone may run. A freeze is a yearly period, at most 90 days, at most two, at
+  least 60 days apart, with leap years ignored as Google ignores them; those are
+  checked where the policy is saved (`--break-freezelength`, `--break-freezegap`),
+  and a freeze with no update type chosen is made automatic because Google
+  refuses freeze periods without one (`--break-freezetype`). A freeze delays
+  security patches, and the page says so. The oldest Android is sent as the number
+  Google takes (`--break-minapi`); phones below it are reported as non-compliant,
+  not locked out.
 
 ### The checks on a policy
 

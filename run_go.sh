@@ -1711,6 +1711,62 @@ GRANT SELECT ON devices TO mdm_operator;"
     "	case d.ADBEnabled != nil || d.DevSettingsEnabled != nil:"
   ;;
 
+--break-wifiempty)
+  # Two policies whose Wi-Fi lists share nothing become "no restriction".
+  echo "==> NEGATIVE CONTROL: disjoint Wi-Fi lists leave an empty list instead of allowing nothing"
+  patch internal/catalog/android_more.go \
+    "	if len(names) == 0 {" \
+    "	if len(names) == 99 {"
+  ;;
+
+--break-wifiminitems)
+  # An empty Wi-Fi list is accepted, so a blank box could lock out every network.
+  echo "==> NEGATIVE CONTROL: an empty Wi-Fi allow-list is accepted"
+  patch internal/catalog/catalog.go \
+    "			if len(clean) < s.MinItems {" \
+    "			if len(clean) < 0 {"
+  ;;
+
+--break-keyguardorder)
+  # Only the first lock-screen switch that is on is sent.
+  echo "==> NEGATIVE CONTROL: lock-screen switches hide one another"
+  patch internal/android/translate.go \
+    "		if on, _ := merged[key].(bool); on {" \
+    "		if on, _ := merged[key].(bool); on && len(keyguard) == 0 {"
+  ;;
+
+--break-freezetype)
+  # A freeze is sent with no update type, which Google refuses.
+  echo "==> NEGATIVE CONTROL: a freeze is sent with no update type"
+  patch internal/android/translate.go \
+    "			if _, hasType := su[\"type\"]; !hasType {" \
+    "			if _, hasType := su[\"type\"]; hasType {"
+  ;;
+
+--break-freezegap)
+  # Two freezes too close together are accepted.
+  echo "==> NEGATIVE CONTROL: freezes closer than 60 days are accepted"
+  patch internal/catalog/android_more.go \
+    "			if gap < FreezeMinGap {" \
+    "			if gap < 0 {"
+  ;;
+
+--break-freezelength)
+  # A freeze longer than 90 days is accepted.
+  echo "==> NEGATIVE CONTROL: a freeze longer than 90 days is accepted"
+  patch internal/catalog/android_more.go \
+    "	if f.days > FreezeMaxDays {" \
+    "	if f.days > 9999 {"
+  ;;
+
+--break-minapi)
+  # The oldest Android is sent as text, not the number Google takes.
+  echo "==> NEGATIVE CONTROL: the minimum Android is sent as text"
+  patch internal/catalog/android_more.go \
+    "	return n, err == nil && n > 0" \
+    "	return s, err == nil && n > 0"
+  ;;
+
 --break-opsrealm)
   # An organisation's session, presented as an owner's, is believed.
   echo "==> NEGATIVE CONTROL: the owner's console does not check the session's realm"
@@ -2004,7 +2060,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi"
   echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear --break-opsresetrevoke --break-opsdisablerevoke --break-opspwrevoke --break-opslinkfits --break-opspendstale"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2

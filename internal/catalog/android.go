@@ -87,6 +87,18 @@ func init() {
 		Setting{Key: "android.encryption_required", OS: "android", Section: pw, Label: "Encrypt the phone",
 			Help: "Requires the phone's storage to be encrypted, protected by the lock.",
 			Kind: Bool, Merge: Restrictive, Path: "encryptionPolicy", Send: on("ENABLED_WITH_PASSWORD")},
+		// The three lock-screen switches are one list at Google, settled in
+		// android.Translate (they cannot be sent one at a time or the last
+		// would win).
+		Setting{Key: "android.keyguard_biometrics_blocked", OS: "android", Section: pw, Label: "Block fingerprint and face unlock",
+			Help: "People must unlock the phone with the PIN or password, never a fingerprint or a face. A fingerprint can be forced on someone who does not agree; a PIN cannot.",
+			Kind: Bool, Merge: Restrictive, Path: "keyguardDisabledFeatures", Send: on("BIOMETRICS")},
+		Setting{Key: "android.keyguard_notifications_hidden", OS: "android", Section: pw, Label: "Hide message contents on the lock screen",
+			Help: "A locked phone shows that a message arrived but not what it says.",
+			Kind: Bool, Merge: Restrictive, Path: "keyguardDisabledFeatures", Send: on("UNREDACTED_NOTIFICATIONS")},
+		Setting{Key: "android.keyguard_trust_agents_blocked", OS: "android", Section: pw, Label: "Block Smart Lock",
+			Help: "Stops the phone staying unlocked because it is at home, near a watch or in a pocket. Every unlock then needs the PIN or password.",
+			Kind: Bool, Merge: Restrictive, Path: "keyguardDisabledFeatures", Send: on("TRUST_AGENTS")},
 
 		// ------------------------------------------------------ screen
 		Setting{Key: "android.wallpaper_locked", OS: "android", Section: scr, Label: "Lock the wallpaper",
@@ -157,6 +169,15 @@ func init() {
 			Kind: Bool, Merge: Restrictive, For: "company", Path: "debuggingFeaturesAllowed", Send: func(v any) (any, bool) { b, _ := v.(bool); return false, b }},
 		Setting{Key: "android.printing_blocked", OS: "android", Section: dev, Label: "Block printing",
 			Kind: Bool, Merge: Restrictive, For: "company", Path: "printingPolicy", Send: on("PRINTING_DISALLOWED")},
+		Setting{Key: "android.microphone_disabled", OS: "android", Section: dev, Label: "Block the microphone",
+			Help: "No app can use the microphone, and the person cannot switch it back on. Calls still work. Company phones only.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "microphoneAccess", Send: on("MICROPHONE_ACCESS_DISABLED")},
+		Setting{Key: "android.usb_data_blocked", OS: "android", Section: dev, Label: "Block all USB data, not only file copying",
+			Help: "Nothing can talk to the phone over the USB cable, so a phone plugged into a computer or a charging kiosk can only charge. Needs Android 12 or newer with a phone that supports it.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "deviceConnectivityManagement.usbDataAccess", Send: on("DISALLOW_USB_DATA_TRANSFER")},
+		Setting{Key: "android.kiosk_launcher", OS: "android", Section: dev, Label: "Lock the phone to the approved apps (kiosk)",
+			Help: "Replaces the home screen with one page that shows only the apps listed under Apps. For single-purpose phones. Add the apps first: with none listed the screen is empty.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "kioskCustomLauncherEnabled", Send: on(true)},
 
 		// ------------------------------------------------------ network
 		Setting{Key: "android.wifi_locked", OS: "android", Section: net, Label: "Block changing Wi-Fi settings",
@@ -172,6 +193,15 @@ func init() {
 			Kind: Text, Merge: FirstByName, Path: "alwaysOnVpnPackage.packageName", Send: nonEmpty, Check: packageName},
 		Setting{Key: "android.always_on_vpn_lockdown", OS: "android", Section: net, Label: "Block the internet when the VPN is off",
 			Kind: Bool, Merge: Restrictive, Path: "alwaysOnVpnPackage.lockdownEnabled", Send: on(true)},
+		Setting{Key: "android.wifi_allowed_networks", OS: "android", Section: net, Label: "Wi-Fi networks the phone may join",
+			Help: "One network name a line. The phone can connect only to these. Leave it empty to allow any. Needs Android 13 or newer. If two policies list different networks, nothing is allowed.",
+			Kind: List, Merge: Intersect, Max: 20, MinItems: 1, For: "company", Path: "deviceConnectivityManagement.wifiSsidPolicy", Send: wifiAllowList, Check: ssidName},
+		Setting{Key: "android.data_roaming_blocked", OS: "android", Section: net, Label: "Block mobile data when roaming",
+			Help: "Phones outside their home network cannot use mobile data, which stops a surprise bill. Wi-Fi still works.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "dataRoamingDisabled", Send: on(true)},
+		Setting{Key: "android.two_g_blocked", OS: "android", Section: net, Label: "Block the old 2G mobile network",
+			Help: "2G has weak protection and can be used to listen in. People cannot turn it back on. Needs Android 14 or newer, and on slower areas the phone may have no signal.",
+			Kind: Bool, Merge: Restrictive, For: "company", Path: "deviceRadioState.cellularTwoGState", Send: on("CELLULAR_TWO_G_DISABLED")},
 
 		// -------------------------------------------------------- apps
 		Setting{Key: "android.apps", OS: "android", Section: apps, Label: "Apps to push, offer or block",
@@ -207,6 +237,17 @@ func init() {
 			Options: []Option{
 				{"POSTPONE", "Postpone (up to 30 days)"},
 				{"AUTOMATIC", "Automatic"},
+			}},
+		Setting{Key: "android.update_freezes", OS: "android", Section: upd, Label: "Pause system updates during busy seasons",
+			Help: "One period a line, as month-day to month-day, like 10-20 to 12-31 (every year). No system update installs in that time, security patches included, so phones fall behind on patches and may show as out of date. At most 90 days each, at most 2, at least 60 days apart. If updates are not set above, they are made automatic outside the freeze.",
+			Kind: List, Merge: Intersect, Max: MaxFreezes, For: "company", Path: "systemUpdate.freezePeriods", Send: freezePeriods, Check: freezeEach, CheckAll: freezeTogether},
+		Setting{Key: "android.minimum_android", OS: "android", Section: upd, Label: "Oldest Android a phone may run",
+			Help: "Phones on an older Android are reported as non-compliant. It does not lock them out. Check what your phones run first: setting this too high flags every one.",
+			Kind: Choice, Merge: Strictest, Path: "minimumApiLevel", Send: minimumAPILevel,
+			Options: []Option{
+				{"26", "Android 8"}, {"28", "Android 9"}, {"29", "Android 10"}, {"30", "Android 11"},
+				{"31", "Android 12"}, {"33", "Android 13"}, {"34", "Android 14"}, {"35", "Android 15"},
+				{"36", "Android 16"},
 			}},
 
 		// ---------------------------------------------- work profile

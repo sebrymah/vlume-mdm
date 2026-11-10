@@ -95,6 +95,13 @@ type Setting struct {
 	Send func(v any) (any, bool)
 	// Check refuses a text value that is the wrong shape.
 	Check func(string) error
+	// CheckAll judges a whole list, for rules that are about the entries
+	// together (periods that must not be too close). Lists only.
+	CheckAll func([]string) error
+	// MinItems is the fewest entries a list may hold. A list that is empty
+	// because it was left blank is dropped before it gets here, so a list
+	// whose empty meaning would be "allow nothing" is refused instead.
+	MinItems int
 	// Note is what the Windows catalogue says until Windows can be enrolled.
 	Note string
 }
@@ -262,6 +269,14 @@ func Parse(raw map[string]json.RawMessage) (Values, error) {
 				clean = append(clean, it)
 			}
 			sort.Strings(clean)
+			if len(clean) < s.MinItems {
+				return nil, fmt.Errorf("%w: %s needs at least %d entry", ErrBadValue, key, s.MinItems)
+			}
+			if s.CheckAll != nil {
+				if err := s.CheckAll(clean); err != nil {
+					return nil, fmt.Errorf("%w: %s: %v", ErrBadValue, key, err)
+				}
+			}
 			out[key] = clean
 		case Apps:
 			var list []AppRule

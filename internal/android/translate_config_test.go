@@ -56,6 +56,9 @@ func TestEveryAndroidSettingIsSentWhereTheCatalogueSaysItIs(t *testing.T) {
 			v = []catalog.AppRule{{Package: "com.example.crm", Install: "required"}}
 		case catalog.List:
 			v = []string{"com.example.svc"}
+			if s.Key == "android.update_freezes" {
+				v = []string{"10-20 to 12-31"} // a list whose entries must be periods
+			}
 		}
 		m := sent(t, nil, catalog.Values{s.Key: v})
 		if _, ok := at(m, s.Path); !ok {
@@ -293,6 +296,98 @@ func TestDebuggingIsOnlyOffWhenBothSwitchesSayOff(t *testing.T) {
 		got := ReportFrom(Device{ADBEnabled: tc.adb, DevSettingsEnabled: tc.dev}, Policy{}).DebuggingEnabled
 		if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
 			t.Errorf("%s: read as %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func TestTheLockScreenSwitchesMakeOneListInAFixedOrder(t *testing.T) {
+	all := catalog.Values{"android.keyguard_trust_agents_blocked": true, "android.keyguard_biometrics_blocked": true,
+		"android.keyguard_notifications_hidden": true}
+	for i := 0; i < 200; i++ {
+		got, ok := at(sent(t, nil, all), "keyguardDisabledFeatures")
+		l, _ := got.([]any)
+		if !ok || len(l) != 3 || l[0] != "BIOMETRICS" || l[1] != "UNREDACTED_NOTIFICATIONS" || l[2] != "TRUST_AGENTS" {
+			t.Fatalf("run %d: three switches did not make three entries in order: %v", i, got)
+		}
+	}
+	got, _ := at(sent(t, nil, catalog.Values{"android.keyguard_trust_agents_blocked": true}), "keyguardDisabledFeatures")
+	if l, _ := got.([]any); len(l) != 1 || l[0] != "TRUST_AGENTS" {
+		t.Fatalf("one switch: %v", got)
+	}
+	if _, ok := at(sent(t, nil, catalog.Values{"android.camera_disabled": true}), "keyguardDisabledFeatures"); ok {
+		t.Fatal("the lock screen was restricted although no policy asked")
+	}
+}
+
+// Two policies that each allow networks the other does not allow nothing. It
+// must never become "no list", which would allow every network, and Google
+// refuses an empty list, so the answer is a list no network can match.
+func TestTwoDisjointWifiListsAllowNoNetworkAtAll(t *testing.T) {
+	a := catalog.Values{"android.wifi_allowed_networks": []string{"Office"}}
+	b := catalog.Values{"android.wifi_allowed_networks": []string{"Depot"}}
+	for _, merged := range []catalog.Values{catalog.Merge(a, b), catalog.Merge(b, a)} {
+		m := sent(t, nil, merged)
+		typ, _ := at(m, "deviceConnectivityManagement.wifiSsidPolicy.wifiSsidPolicyType")
+		ssids, _ := at(m, "deviceConnectivityManagement.wifiSsidPolicy.wifiSsids")
+		l, _ := ssids.([]any)
+		if typ != "WIFI_SSID_ALLOWLIST" || len(l) != 1 || l[0].(map[string]any)["wifiSsid"] != catalog.NoWifiAllowed {
+			t.Fatalf("disjoint lists did not become an allow-list of nothing: %v", m["deviceConnectivityManagement"])
+		}
+	}
+	m := sent(t, nil, catalog.Merge(a, catalog.Values{"android.wifi_allowed_networks": []string{"Depot", "Office"}}))
+	ssids, _ := at(m, "deviceConnectivityManagement.wifiSsidPolicy.wifiSsids")
+	if l, _ := ssids.([]any); len(l) != 1 || l[0].(map[string]any)["wifiSsid"] != "Office" {
+		t.Fatalf("the network both allow was not the one left: %v", ssids)
+	}
+}
+
+func TestAFreezeIsSentAsGoogleWantsItAndNeverWithoutAnUpdateType(t *testing.T) {
+	freeze := catalog.Values{"android.update_freezes": []string{"10-20 to 12-31"}}
+	m := sent(t, nil, freeze)
+	got, _ := at(m, "systemUpdate.freezePeriods")
+	l, _ := got.([]any)
+	if len(l) != 1 {
+		t.Fatalf("the freeze was not sent: %v", m["systemUpdate"])
+	}
+	p := l[0].(map[string]any)
+	s, e := p["startDate"].(map[string]any), p["endDate"].(map[string]any)
+	if s["month"] != float64(10) || s["day"] != float64(20) || e["month"] != float64(12) || e["day"] != float64(31) {
+		t.Fatalf("the dates are wrong: %v", p)
+	}
+	if typ, _ := at(m, "systemUpdate.type"); typ != "AUTOMATIC" {
+		t.Fatalf("a freeze with no update type chosen must make updates automatic, got %v", typ)
+	}
+	// A type the policies chose is kept.
+	m = sent(t, nil, catalog.Merge(freeze, catalog.Values{"android.system_updates": "POSTPONE"}))
+	if typ, _ := at(m, "systemUpdate.type"); typ != "POSTPONE" {
+		t.Fatalf("the chosen update type was replaced: %v", typ)
+	}
+}
+
+func TestTheOtherNewSettingsAreSentInGooglesWords(t *testing.T) {
+	m := sent(t, nil, catalog.Values{
+		"android.minimum_android": "33", "android.microphone_disabled": true, "android.usb_data_blocked": true,
+		"android.kiosk_launcher": true, "android.two_g_blocked": true, "android.data_roaming_blocked": true})
+	for path, want := range map[string]any{
+		"minimumApiLevel":                              float64(33), // a number, not "33"
+		"microphoneAccess":                             "MICROPHONE_ACCESS_DISABLED",
+		"deviceConnectivityManagement.usbDataAccess":   "DISALLOW_USB_DATA_TRANSFER",
+		"kioskCustomLauncherEnabled":                   true,
+		"deviceRadioState.cellularTwoGState":           "CELLULAR_TWO_G_DISABLED",
+		"dataRoamingDisabled":                          true,
+	} {
+		if got, ok := at(m, path); !ok || got != want {
+			t.Errorf("%s: got %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestTheOldestAndroidIsTheNewestOfThoseAsked(t *testing.T) {
+	a := catalog.Values{"android.minimum_android": "29"}
+	b := catalog.Values{"android.minimum_android": "34"}
+	for _, merged := range []catalog.Values{catalog.Merge(a, b), catalog.Merge(b, a)} {
+		if got, _ := at(sent(t, nil, merged), "minimumApiLevel"); got != float64(34) {
+			t.Fatalf("the higher minimum did not win: %v", got)
 		}
 	}
 }

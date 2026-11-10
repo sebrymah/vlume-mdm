@@ -208,3 +208,62 @@ func TestListsAreCheckedTidiedAndMergedTheRightWay(t *testing.T) {
 		t.Fatalf("a policy without a list changed another's: %v", m)
 	}
 }
+
+// Google refuses a freeze longer than 90 days and two freezes closer than 60,
+// so both are refused here, where a person is told, and not by Google later.
+func TestUpdateFreezesAreCheckedTheWayGoogleChecksThem(t *testing.T) {
+	good := [][]string{
+		{"10-20 to 12-31"},
+		{"12-20 to 02-10"}, // wraps over the new year
+		{"01-01 to 03-31"}, // exactly 90 days
+		{"01-01 to 02-15", "06-01 to 07-15"},
+	}
+	for _, l := range good {
+		b, _ := json.Marshal(l)
+		if _, err := Parse(raw(t, `{"android.update_freezes": `+string(b)+`}`)); err != nil {
+			t.Errorf("%v was refused: %v", l, err)
+		}
+	}
+	bad := [][]string{
+		{"01-01 to 04-01"},             // 91 days
+		{"10-01 to 01-15"},             // 107 days, wrapping
+		{"13-01 to 12-31"},             // no month 13
+		{"02-30 to 03-10"},             // no 30 February
+		{"02-29 to 03-10"},             // 29 February is not accepted
+		{"Oct 20 to Dec 31"},           // wrong shape
+		{"01-01 to 02-15", "03-20 to 04-30"},               // 32 days apart
+		{"11-01 to 12-15", "01-20 to 02-20"},               // 35 days apart, round the year end
+		{"01-01 to 01-10", "05-01 to 05-10", "09-01 to 09-10"}, // three
+	}
+	for _, l := range bad {
+		b, _ := json.Marshal(l)
+		if _, err := Parse(raw(t, `{"android.update_freezes": `+string(b)+`}`)); err == nil {
+			t.Errorf("%v was accepted", l)
+		}
+	}
+}
+
+func TestAWifiAllowListNeedsAtLeastOneNetworkWithAValidName(t *testing.T) {
+	for _, in := range []string{
+		`{"android.wifi_allowed_networks": []}`, // allow nothing is not what an empty box means
+		`{"android.wifi_allowed_networks": ["` + strings.Repeat("a", 33) + `"]}`,
+	} {
+		if _, err := Parse(raw(t, in)); err == nil {
+			t.Errorf("accepted: %.80s", in)
+		}
+	}
+	if _, err := Parse(raw(t, `{"android.wifi_allowed_networks": ["Farm office", "Depot-2"]}`)); err != nil {
+		t.Errorf("a good list was refused: %v", err)
+	}
+}
+
+func TestOnlyTheListedAndroidVersionsAreChoices(t *testing.T) {
+	if _, err := Parse(raw(t, `{"android.minimum_android": "33"}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []string{`{"android.minimum_android": "7"}`, `{"android.minimum_android": 33}`, `{"android.minimum_android": "13"}`} {
+		if _, err := Parse(raw(t, in)); err == nil {
+			t.Errorf("accepted: %s", in)
+		}
+	}
+}

@@ -160,7 +160,10 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 		"android.screen_lock_seconds": true, "android.encryption_required": true,
 		// Both settings write the same field, so they are settled below, in one
 		// place, rather than by whichever the map hands over first.
-		"android.accessibility_system_only": true, "android.accessibility_allowed": true}
+		"android.accessibility_system_only": true, "android.accessibility_allowed": true,
+		// The lock-screen switches are one list at Google; see below.
+		"android.keyguard_biometrics_blocked": true, "android.keyguard_notifications_hidden": true,
+		"android.keyguard_trust_agents_blocked": true}
 	for key, v := range merged {
 		if typed[key] {
 			continue
@@ -185,6 +188,32 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 		out.set("permittedAccessibilityServices.packageNames", []string{})
 	} else if list, ok := merged["android.accessibility_allowed"].([]string); ok {
 		out.set("permittedAccessibilityServices.packageNames", list)
+	}
+	// The lock-screen switches make ONE list at Google. Each switch that is on
+	// adds its entry, in the catalogue's order, so the list is the same
+	// whichever order the map hands them over and no switch hides another.
+	var keyguard []string
+	for _, key := range []string{"android.keyguard_biometrics_blocked", "android.keyguard_notifications_hidden",
+		"android.keyguard_trust_agents_blocked"} {
+		if on, _ := merged[key].(bool); on {
+			s, _ := catalog.Lookup(key)
+			if sent, include := s.Send(true); include {
+				keyguard = append(keyguard, sent.(string))
+			}
+		}
+	}
+	if len(keyguard) > 0 {
+		out.set("keyguardDisabledFeatures", keyguard)
+	}
+	// A freeze only means something beside an update type: Google refuses
+	// freeze periods under "follow the default", so a freeze with no type
+	// chosen is made automatic, which is the safe way to update outside it.
+	if su, ok := out.Extra["systemUpdate"].(map[string]any); ok {
+		if _, hasFreeze := su["freezePeriods"]; hasFreeze {
+			if _, hasType := su["type"]; !hasType {
+				su["type"] = "AUTOMATIC"
+			}
+		}
 	}
 	sort.Strings(undelivered)
 	return out, undelivered

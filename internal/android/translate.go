@@ -205,6 +205,13 @@ func TranslateWith(rules policy.Rules, cfg catalog.Values) (Policy, []string) {
 	if len(keyguard) > 0 {
 		out.set("keyguardDisabledFeatures", keyguard)
 	}
+	// Two policies that allow different Wi-Fi networks allow none. Google wants
+	// a list that is not empty, so the list carries a name no network has
+	// (catalog.NoWifiAllowed); but a name is only a name, so Wi-Fi is also
+	// switched off and kept off. Nothing connects, whatever it is called.
+	if l, ok := merged["android.wifi_allowed_networks"].([]string); ok && len(l) == 0 {
+		out.set("deviceRadioState.wifiState", "WIFI_DISABLED")
+	}
 	// A freeze only means something beside an update type: Google refuses
 	// freeze periods under "follow the default", so a freeze with no type
 	// chosen is made automatic, which is the safe way to update outside it.

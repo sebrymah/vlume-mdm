@@ -333,6 +333,10 @@ func TestTwoDisjointWifiListsAllowNoNetworkAtAll(t *testing.T) {
 		if typ != "WIFI_SSID_ALLOWLIST" || len(l) != 1 || l[0].(map[string]any)["wifiSsid"] != catalog.NoWifiAllowed {
 			t.Fatalf("disjoint lists did not become an allow-list of nothing: %v", m["deviceConnectivityManagement"])
 		}
+		// A placeholder name is guessable, so Wi-Fi is also off and stays off.
+		if off, _ := at(m, "deviceRadioState.wifiState"); off != "WIFI_DISABLED" {
+			t.Fatalf("Wi-Fi was not switched off when no network is allowed: %v", off)
+		}
 	}
 	m := sent(t, nil, catalog.Merge(a, catalog.Values{"android.wifi_allowed_networks": []string{"Depot", "Office"}}))
 	ssids, _ := at(m, "deviceConnectivityManagement.wifiSsidPolicy.wifiSsids")

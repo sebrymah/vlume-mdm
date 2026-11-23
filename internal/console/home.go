@@ -123,7 +123,7 @@ func BuildHome(c data.StateCounts, pending int, audit []data.AuditEvent, now tim
 	h.Legend = []LegendRow{
 		{colCompliant, "Compliant", "", "/devices", c.Compliant},
 		{colFailing, "Not compliant", "a rule is failing", "/devices?show=attention", c.NotCompliant},
-		{colQuiet, "Gone quiet", "no report in 24 hours", "/devices?show=quiet", c.StateUnknown},
+		{colQuiet, "Gone quiet", "no recent report", "/devices?show=quiet", c.StateUnknown},
 		{colHeld, "Quarantined", "work access removed", "/devices?show=attention", c.Quarantined},
 		{colNever, "Never reported", "", "/devices?show=quiet", c.AwaitingFirst},
 	}

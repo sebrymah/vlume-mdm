@@ -624,6 +624,41 @@ Then a member of %q signs in and finishes setup from the console.
 		}
 		fmt.Printf("The open sign-up link for %s no longer works.\n", args[0])
 
+	case "tenant-admin-add":
+		// A customer whose only administrator is locked out (a lost phone, a
+		// forgotten password) and who has no other administrator to reset
+		// them. Owners cannot read inside a customer, so this does not reset
+		// anyone: it adds one NEW invited Super Admin through the same two
+		// inserts that open the door at tenant creation, prints one link, and
+		// leaves a line in the owners' record. The new administrator can
+		// disable the old account from the Users page.
+		fs := flag.NewFlagSet("tenant-admin-add", flag.ExitOnError)
+		email := fs.String("email", "", "the new administrator's email address (not one the organisation already has)")
+		name := fs.String("name", "", "the new administrator's name")
+		host := fs.String("host", "", "the organisation's hostname for the link (default: its first)")
+		_ = fs.Parse(args)
+		if fs.NArg() != 1 || *email == "" {
+			fail("usage: tenantctl tenant-admin-add --email <address> [--name \"Name\"] [--host <hostname>] <slug>")
+		}
+		token, hash, terr := localauth.NewToken()
+		if terr != nil {
+			fail("%v", terr)
+		}
+		linkHost, err := dir.AddTenantAdmin(ctx, fs.Arg(0), *email, *name, hash, *host, "tenantctl")
+		if err != nil {
+			fail("not added: %v", err)
+		}
+		fmt.Printf(`Added %s as a new Super Admin of %s. Nothing that was there was read or changed.
+
+Give them this link. It works once, for %s, and is shown only now:
+
+  https://%s/signin/local/accept/%s
+
+They choose a password, then set up an authenticator app. After that they can
+disable the locked-out account from the Users page. This was written to the
+owners' record.
+`, *email, fs.Arg(0), directory.AdminRecoveryLinkLife, linkHost, token)
+
 	case "operator-add":
 		// The platform owners' own accounts: who can sign in to the console
 		// that can suspend every customer. Adding one makes an invited
@@ -691,7 +726,7 @@ Then a member of %q signs in and finishes setup from the console.
 		_ = w.Flush()
 
 	default:
-		fail("unknown command %q: use create, list, suspend, resume, add-host, signups, cancel-signup, operator-add, operator-link, operator-reset-mfa, operator-list, usage, snapshot, set-plan, set-quota or feature", cmd)
+		fail("unknown command %q: use create, list, suspend, resume, add-host, signups, cancel-signup, tenant-admin-add, operator-add, operator-link, operator-reset-mfa, operator-list, usage, snapshot, set-plan, set-quota or feature", cmd)
 	}
 }
 

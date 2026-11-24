@@ -3146,6 +3146,22 @@ second factor), `operator-reset-mfa` is for a lost phone, `operator-list`
 shows who exists. Only the newest link works (`--break-opsreplace`); a link
 works once (`--break-opsonce`); an invitation lasts a week, a reset an hour.
 
+**A customer locked out of their own console** (their only administrator lost a
+phone or a password, and has nobody to reset them). Owners cannot read inside a
+customer, so there is no reset. `tenantctl tenant-admin-add --email <address>
+<slug>` adds one NEW invited Super Admin through the same two inserts that open
+the door when the customer is made (`local_accounts` and `local_tokens`, 0044),
+prints one link that works once for a day, and writes `tenant.admin_added` to
+`operator_events`. It reads nothing and changes nothing that is there: the
+locked-out account stays, and the new administrator disables it from the Users
+page. It refuses an address the customer already has (the old account cannot be
+read from here, so use another), a customer that signs in through its own
+identity provider, a customer that is not active, and a hostname that is not
+theirs, and a refusal leaves no row behind. Be clear about what it is: a way
+into a customer's console for whoever holds the operator's login, kept narrow
+and on the record. Controls: `--break-adminlocal`, `--break-adminactive`,
+`--break-adminlife`, `--break-adminrecord`.
+
 **Signing in** is a password, then a code. A password alone gives no session
 (`--break-opsmfa`), and an account that has only been invited cannot sign in
 with a password someone else set (`--break-opsinvited`). Wrong answers lock the

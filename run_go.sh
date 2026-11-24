@@ -1838,6 +1838,38 @@ GRANT SELECT ON devices TO mdm_operator;"
 		return \"info\""
   ;;
 
+--break-adminlocal)
+  # The recovery adds an account to an organisation that signs in elsewhere.
+  echo "==> NEGATIVE CONTROL: the recovery adds an account to a customer with its own identity provider"
+  patch internal/directory/tenant_admin.go \
+    "	if protocol != \"local\" {" \
+    "	if false {"
+  ;;
+
+--break-adminactive)
+  # The recovery adds an administrator to a suspended customer.
+  echo "==> NEGATIVE CONTROL: the recovery adds an administrator to a suspended customer"
+  patch internal/directory/tenant_admin.go \
+    "	if status != \"active\" {" \
+    "	if false {"
+  ;;
+
+--break-adminlife)
+  # The recovery link lasts a week, not a day.
+  echo "==> NEGATIVE CONTROL: the recovery link lasts a week"
+  patch internal/directory/tenant_admin.go \
+    "inviteHash, \"24 hours\"); err != nil {" \
+    "inviteHash, \"7 days\"); err != nil {"
+  ;;
+
+--break-adminrecord)
+  # The recovery leaves no line in the owners' record.
+  echo "==> NEGATIVE CONTROL: the recovery is not written to the owners' record"
+  patch internal/directory/tenant_admin.go \
+    "by, \"tenant.admin_added\", strings.ToLower" \
+    "by, \"tenant.something_else\", strings.ToLower"
+  ;;
+
 --break-opsrealm)
   # An organisation's session, presented as an owner's, is believed.
   echo "==> NEGATIVE CONTROL: the owner's console does not check the session's realm"
@@ -2131,7 +2163,7 @@ GRANT SELECT ON devices TO mdm_operator;"
   echo "            --break-vaulthttp --break-keydescribe --break-keyfilemode --break-freemailsuffix"
   echo "            --break-macnormalise --break-macmove --break-isecompliance --break-emailreuse --break-leftmark"
   echo "            --break-historychange --break-trendcount --break-personsql --break-slosig --break-rotategrace --break-keysdiffer --break-bucketssrf"
-  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifioff --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi --break-wipename --break-filterwiden --break-panelscope --break-homecalm --break-homequeue --break-reach --break-statuspill"
+  echo "            --break-lockout --break-totpreplay --break-lastadmin --break-enumeration --break-localtoken --break-mfarequired --break-localprotocol --break-sessionsend --break-reserved --break-qrpayload --break-qrowner --break-selfwho --break-selfoff --break-selfcap --break-selfowner --break-selfleaver --break-unverifiedemail --break-joincode --break-joinlock --break-joincap --break-joinexpiry --break-joincancel --break-joinrace --break-joinreset --break-configsystem --break-configowner --break-configfilter --break-configstrict --break-configrules --break-configunknown --break-libraryonce --break-personalpolicy --break-passcodeorder --break-enrolscheme --break-enrolandroid --break-patchage --break-debugread --break-offsense --break-integrity --break-accessibility --break-listmerge --break-futurepatch --break-debugpartial --break-wifiempty --break-wifioff --break-wifiminitems --break-keyguardorder --break-freezetype --break-freezegap --break-freezelength --break-minapi --break-wipename --break-filterwiden --break-panelscope --break-homecalm --break-homequeue --break-reach --break-statuspill --break-adminlocal --break-adminactive --break-adminlife --break-adminrecord"
   echo "            --break-opsrealm --break-opsrole --break-opssubject --break-opsactive --break-opsinvalid --break-opsinvited --break-opsmfa --break-opsonce --break-opsreplace --break-opsstep --break-opslock --break-opscount --break-opshost --break-opsframe --break-opsseal --break-opsunknown --break-opsflag --break-opscsrf --break-opsorigin --break-opsconfirm --break-opsrecord --break-opsbounds --break-opsself --break-opslastowner --break-opsplanclear --break-opsresetrevoke --break-opsdisablerevoke --break-opspwrevoke --break-opslinkfits --break-opspendstale"
   echo "            --break-tokenrevoked --break-networkrole --break-feeddeny --break-feedunknown"
   exit 2
